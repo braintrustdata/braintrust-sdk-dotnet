@@ -85,11 +85,11 @@ public sealed class BraintrustConfig : BaseConfig
     /// </summary>
     public string? GetBraintrustParentValue()
     {
-        if (DefaultProjectId != null)
+        if (!string.IsNullOrEmpty(DefaultProjectId))
         {
             return $"project_id:{DefaultProjectId}";
         }
-        else if (DefaultProjectName != null)
+        else if (!string.IsNullOrEmpty(DefaultProjectName))
         {
             return $"project_name:{DefaultProjectName}";
         }

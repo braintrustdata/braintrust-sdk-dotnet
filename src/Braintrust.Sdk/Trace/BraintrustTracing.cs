@@ -66,6 +66,7 @@ public static class BraintrustTracing
             .SetResourceBuilder(ResourceBuilder.CreateDefault()
                 .AddService(serviceName: OtelServiceName, serviceVersion: InstrumentationVersion))
             .AddSource(InstrumentationName)
+            .AddProcessor(new BraintrustSpanProcessor(config))
             .AddOtlpExporter(otlpOptions =>
             {
                 // Configure OTLP HTTP exporter to send to Braintrust
@@ -76,7 +77,9 @@ public static class BraintrustTracing
             })
             .SetSampler(new AlwaysOnSampler());
 
-        // TODO: Add BatchSpanProcessor configuration when we implement custom processor
+        // TODO: Add per-parent HTTP header routing like Java SDK
+        // Currently parent info is sent via span attributes; full header-based routing
+        // requires custom HTTP handling
         // TODO: Add shutdown hook for graceful cleanup
     }
 
