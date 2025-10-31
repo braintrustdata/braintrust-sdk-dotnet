@@ -128,48 +128,41 @@ public sealed class Braintrust
         return new Uri($"{Config.AppUrl}/app/{orgAndProject.OrgInfo.Name}/p/{orgAndProject.Project.Name}");
     }
 
-    // TODO: Implement when we have BraintrustTracing
-    // /// <summary>
-    // /// Quick start method that sets up global OpenTelemetry with this Braintrust.
-    // ///
-    // /// If you're looking for more options for configuring Braintrust/OpenTelemetry,
-    // /// consult the Enable method.
-    // /// </summary>
-    // public OpenTelemetry OpenTelemetryCreate()
-    // {
-    //     return OpenTelemetryCreate(registerGlobal: true);
-    // }
+    /// <summary>
+    /// Quick start method that sets up OpenTelemetry with this Braintrust.
+    ///
+    /// If you're looking for more options for configuring Braintrust/OpenTelemetry,
+    /// consult the Enable method.
+    /// </summary>
+    public OpenTelemetry.Trace.TracerProvider OpenTelemetryCreate()
+    {
+        return OpenTelemetryCreate(registerGlobal: true);
+    }
 
-    // TODO: Implement when we have BraintrustTracing
-    // /// <summary>
-    // /// Quick start method that sets up OpenTelemetry with this Braintrust.
-    // ///
-    // /// If you're looking for more options for configuring Braintrust and OpenTelemetry,
-    // /// consult the Enable method.
-    // /// </summary>
-    // public OpenTelemetry OpenTelemetryCreate(bool registerGlobal)
-    // {
-    //     return BraintrustTracing.Of(Config, registerGlobal);
-    // }
+    /// <summary>
+    /// Quick start method that sets up OpenTelemetry with this Braintrust.
+    ///
+    /// If you're looking for more options for configuring Braintrust and OpenTelemetry,
+    /// consult the Enable method.
+    /// </summary>
+    public OpenTelemetry.Trace.TracerProvider OpenTelemetryCreate(bool registerGlobal)
+    {
+        return Trace.BraintrustTracing.Of(Config, registerGlobal);
+    }
 
-    // TODO: Implement when we have BraintrustTracing
-    // /// <summary>
-    // /// Add Braintrust to existing OpenTelemetry builders.
-    // ///
-    // /// This method provides the most options for configuring Braintrust and OpenTelemetry.
-    // /// If you're looking for a more user-friendly setup, consult the OpenTelemetryCreate methods.
-    // ///
-    // /// NOTE: This method should only be invoked once. Enabling Braintrust multiple times is
-    // /// unsupported and may lead to undesired behavior.
-    // /// </summary>
-    // public void OpenTelemetryEnable(
-    //     TracerProviderBuilder tracerProviderBuilder,
-    //     LoggerProviderBuilder loggerProviderBuilder,
-    //     MeterProviderBuilder meterProviderBuilder)
-    // {
-    //     BraintrustTracing.Enable(
-    //         Config, tracerProviderBuilder, loggerProviderBuilder, meterProviderBuilder);
-    // }
+    /// <summary>
+    /// Add Braintrust to existing OpenTelemetry TracerProviderBuilder.
+    ///
+    /// This method provides the most options for configuring Braintrust and OpenTelemetry.
+    /// If you're looking for a more user-friendly setup, consult the OpenTelemetryCreate methods.
+    ///
+    /// NOTE: This method should only be invoked once. Enabling Braintrust multiple times is
+    /// unsupported and may lead to undesired behavior.
+    /// </summary>
+    public void OpenTelemetryEnable(OpenTelemetry.Trace.TracerProviderBuilder tracerProviderBuilder)
+    {
+        Trace.BraintrustTracing.Enable(Config, tracerProviderBuilder);
+    }
 
     // TODO: Implement when we have Eval
     // /// <summary>
