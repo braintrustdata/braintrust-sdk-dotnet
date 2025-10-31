@@ -136,13 +136,12 @@ public class BraintrustConfigTest
     {
         var config = BraintrustConfig.Of(
             "BRAINTRUST_API_KEY", "test-key",
+            "BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project",
             "BRAINTRUST_DEBUG", "true",
-            "BRAINTRUST_ENABLE_TRACE_CONSOLE_LOG", "true",
-            "BRAINTRUST_X_OTEL_LOGS", "true"
+            "BRAINTRUST_ENABLE_TRACE_CONSOLE_LOG", "true"
         );
 
         Assert.True(config.Debug);
         Assert.True(config.EnableTraceConsoleLog);
-        Assert.True(config.ExperimentalOtelLogs);
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 
 namespace Braintrust.Sdk;
@@ -97,38 +98,35 @@ public sealed class Braintrust
     /// </summary>
     public static Braintrust Of(BraintrustConfig config)
     {
-        // TODO: Initialize ApiClient when available
-        // var apiClient = BraintrustApiClient.Of(config);
+        var apiClient = BraintrustApiClient.Of(config);
 
         // TODO: Initialize PromptLoader when available
         // var promptLoader = BraintrustPromptLoader.Of(config, apiClient);
 
-        return new Braintrust(config);
+        return new Braintrust(config, apiClient);
     }
 
     public BraintrustConfig Config { get; }
-
-    // TODO: Add when ApiClient is implemented
-    // public BraintrustApiClient ApiClient { get; }
+    public IBraintrustApiClient ApiClient { get; }
 
     // TODO: Add when PromptLoader is implemented
     // public BraintrustPromptLoader PromptLoader { get; }
 
-    private Braintrust(BraintrustConfig config)
+    private Braintrust(BraintrustConfig config, IBraintrustApiClient apiClient)
     {
         Config = config ?? throw new ArgumentNullException(nameof(config));
+        ApiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
         // TODO: Initialize other components when available
     }
 
-    // TODO: Implement when we have ApiClient
-    // /// <summary>
-    // /// Get the URI to the configured Braintrust org and project.
-    // /// </summary>
-    // public Uri ProjectUri()
-    // {
-    //     return BraintrustUtils.CreateProjectUri(
-    //         Config.AppUrl, ApiClient.GetOrCreateProjectAndOrgInfo(Config));
-    // }
+    /// <summary>
+    /// Get the URI to the configured Braintrust org and project.
+    /// </summary>
+    public Uri ProjectUri()
+    {
+        var orgAndProject = ApiClient.GetOrCreateProjectAndOrgInfo();
+        return new Uri($"{Config.AppUrl}/app/{orgAndProject.OrgInfo.Name}/p/{orgAndProject.Project.Name}");
+    }
 
     // TODO: Implement when we have BraintrustTracing
     // /// <summary>

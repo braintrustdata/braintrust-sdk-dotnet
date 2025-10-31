@@ -62,9 +62,7 @@ public sealed class BraintrustConfig : BaseConfig
         DefaultProjectName = GetConfig("BRAINTRUST_DEFAULT_PROJECT_NAME", "default-dotnet-project");
         EnableTraceConsoleLog = GetConfig("BRAINTRUST_ENABLE_TRACE_CONSOLE_LOG", false);
         Debug = GetConfig("BRAINTRUST_DEBUG", false);
-        ExperimentalOtelLogs = GetConfig("BRAINTRUST_X_OTEL_LOGS", false);
         RequestTimeout = TimeSpan.FromSeconds(GetConfig("BRAINTRUST_REQUEST_TIMEOUT", 30));
-        ExportSpansInMemoryForUnitTest = GetConfig("BRAINTRUST_DOTNET_EXPORT_SPANS_IN_MEMORY_FOR_UNIT_TEST", false);
 
         if (DefaultProjectId == null && DefaultProjectName == null)
         {
