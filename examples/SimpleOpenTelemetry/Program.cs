@@ -3,9 +3,9 @@ using System.Threading;
 using Braintrust.Sdk;
 using Braintrust.Sdk.Trace;
 
-namespace Braintrust.Sdk.Examples;
+namespace Braintrust.Sdk.Examples.SimpleOpenTelemetry;
 
-class SimpleOpenTelemetryExample
+class Program
 {
     static void Main(string[] args)
     {

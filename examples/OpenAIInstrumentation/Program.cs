@@ -1,0 +1,105 @@
+using System;
+using System.Threading.Tasks;
+using Braintrust.Sdk;
+using Braintrust.Sdk.Instrumentation.OpenAI;
+using Braintrust.Sdk.Trace;
+using OpenAI;
+using OpenAI.Chat;
+
+namespace Braintrust.Sdk.Examples.OpenAIInstrumentation;
+
+/// <summary>
+/// Basic example demonstrating OpenAI instrumentation with Braintrust.
+///
+/// This example shows how to:
+/// 1. Set up Braintrust and OpenTelemetry
+/// 2. Wrap an OpenAI client with instrumentation
+/// 3. Use the instrumented client normally
+/// 4. View the results in Braintrust
+/// </summary>
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        // Check for API key
+        var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            Console.WriteLine("\nWARNING: OPENAI_API_KEY environment variable not found. This example will likely fail.\n");
+        }
+
+        // Step 1: Initialize Braintrust and create OpenTelemetry provider
+        var braintrust = Braintrust.Get();
+        var tracerProvider = braintrust.OpenTelemetryCreate();
+        var activitySource = BraintrustTracing.GetActivitySource();
+
+        // Step 2: Create an instrumented OpenAI client
+        var instrumentedClient = BraintrustOpenAI.WrapOpenAI(activitySource, apiKey);
+
+        // Step 3: Create a root span for the entire example
+        using (var rootActivity = activitySource.StartActivity("openai-dotnet-instrumentation-example"))
+        {
+            if (rootActivity != null)
+            {
+                // Step 4: Use the instrumented client normally
+                await ChatCompletionsExample(instrumentedClient);
+
+                // TODO: Add more examples when instrumentation is fully implemented
+                // await ChatCompletionsStreamingExample(instrumentedClient);
+                // await EmbeddingsExample(instrumentedClient);
+
+                // Step 5: Generate link to view results in Braintrust
+                var url = braintrust.ProjectUri()
+                    + $"/logs?r={rootActivity.TraceId}&s={rootActivity.SpanId}";
+                Console.WriteLine($"\n\n  Example complete! View your data in Braintrust: {url}\n");
+            }
+        }
+
+        // Step 6: Clean up - dispose the tracer provider to flush any remaining spans
+        tracerProvider?.Dispose();
+    }
+
+    private static async Task ChatCompletionsExample(OpenAIClient openAIClient)
+    {
+        Console.WriteLine("\n~~~ CHAT COMPLETIONS EXAMPLE\n");
+
+        // Get the chat client
+        var chatClient = openAIClient.GetChatClient("gpt-4o-mini");
+
+        // Create a chat completion request
+        var messages = new ChatMessage[]
+        {
+            new SystemChatMessage("You are a helpful assistant"),
+            new UserChatMessage("What is the capital of France?")
+        };
+
+        // Make the request - telemetry will be captured automatically
+        var response = await chatClient.CompleteChatAsync(messages);
+
+        Console.WriteLine($"Response: {response.Value.Content[0].Text}");
+        Console.WriteLine($"Model: {response.Value.Model}");
+        Console.WriteLine($"Finish Reason: {response.Value.FinishReason}");
+    }
+
+    // TODO: Add streaming example when instrumentation is fully implemented
+    // private static async Task ChatCompletionsStreamingExample(OpenAIClient openAIClient)
+    // {
+    //     Console.WriteLine("\n~~~ STREAMING RESPONSE:\n");
+    //
+    //     var chatClient = openAIClient.GetChatClient("gpt-4o-mini");
+    //     var messages = new ChatMessage[]
+    //     {
+    //         new SystemChatMessage("You are a helpful assistant"),
+    //         new UserChatMessage("What is the capital of France?")
+    //     };
+    //
+    //     await foreach (var update in chatClient.CompleteChatStreamingAsync(messages))
+    //     {
+    //         foreach (var contentPart in update.ContentUpdate)
+    //         {
+    //             Console.Write(contentPart.Text);
+    //         }
+    //     }
+    //     Console.WriteLine("\n");
+    // }
+}

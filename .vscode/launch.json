@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "OpenAI Instrumentation Example",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/examples/OpenAIInstrumentation/bin/Debug/net8.0/OpenAIInstrumentation.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/examples/OpenAIInstrumentation",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "justMyCode": false,
+            "suppressJITOptimizations": true,
+            "enableStepFiltering": false,
+            "symbolOptions": {
+                "searchPaths": [],
+                "searchMicrosoftSymbolServer": true,
+                "searchNuGetOrgSymbolServer": true
+            },
+            "sourceFileMap": {
+                "/_/": "${workspaceFolder}/"
+            }
+        },
+        {
+            "name": "Simple OpenTelemetry Example",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/examples/SimpleOpenTelemetry/bin/Debug/net8.0/SimpleOpenTelemetry.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/examples/SimpleOpenTelemetry",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "justMyCode": false,
+            "suppressJITOptimizations": true,
+            "enableStepFiltering": false,
+            "symbolOptions": {
+                "searchPaths": [],
+                "searchMicrosoftSymbolServer": true,
+                "searchNuGetOrgSymbolServer": true
+            },
+            "sourceFileMap": {
+                "/_/": "${workspaceFolder}/"
+            }
+        }
+    ]
+}
