@@ -2,7 +2,6 @@ using System;
 using System.Threading.Tasks;
 using Braintrust.Sdk;
 using Braintrust.Sdk.Instrumentation.OpenAI;
-using Braintrust.Sdk.Trace;
 using OpenAI;
 using OpenAI.Chat;
 
@@ -31,7 +30,7 @@ class Program
         // Step 1: Initialize Braintrust and create OpenTelemetry provider
         var braintrust = Braintrust.Get();
         var tracerProvider = braintrust.OpenTelemetryCreate();
-        var activitySource = BraintrustTracing.GetActivitySource();
+        var activitySource = braintrust.GetActivitySource();
 
         // Step 2: Create an instrumented OpenAI client
         var instrumentedClient = BraintrustOpenAI.WrapOpenAI(activitySource, apiKey);
@@ -54,9 +53,6 @@ class Program
                 Console.WriteLine($"\n\n  Example complete! View your data in Braintrust: {url}\n");
             }
         }
-
-        // Step 6: Clean up - dispose the tracer provider to flush any remaining spans
-        tracerProvider?.Dispose();
     }
 
     private static async Task ChatCompletionsExample(OpenAIClient openAIClient)

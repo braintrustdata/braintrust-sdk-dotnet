@@ -90,6 +90,7 @@ public sealed class Braintrust
         lock (_lock)
         {
             _instance = null;
+            Trace.BraintrustTracing.ResetForTest();
         }
     }
 
@@ -164,14 +165,21 @@ public sealed class Braintrust
         Trace.BraintrustTracing.Enable(Config, tracerProviderBuilder);
     }
 
-    // TODO: Implement when we have Eval
-    // /// <summary>
-    // /// Create a new eval builder.
-    // /// </summary>
-    // public Eval.Builder<TInput, TOutput> EvalBuilder<TInput, TOutput>()
-    // {
-    //     return Eval.Builder<TInput, TOutput>()
-    //         .WithConfig(Config)
-    //         .WithApiClient(ApiClient);
-    // }
+    /// <summary>
+    /// Get the ActivitySource for creating spans. Use this to instrument your code with Braintrust tracing.
+    /// </summary>
+    public System.Diagnostics.ActivitySource GetActivitySource()
+    {
+        return Trace.BraintrustTracing.GetActivitySource();
+    }
+
+    /// <summary>
+    /// Create a new eval builder.
+    /// </summary>
+    public Eval.Eval<TInput, TOutput>.Builder EvalBuilder<TInput, TOutput>()
+    {
+        return Eval.Eval<TInput, TOutput>.NewBuilder()
+            .Config(Config)
+            .ApiClient(ApiClient);
+    }
 }

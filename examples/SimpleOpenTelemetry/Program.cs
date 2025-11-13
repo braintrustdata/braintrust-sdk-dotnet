@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using Braintrust.Sdk;
-using Braintrust.Sdk.Trace;
 
 namespace Braintrust.Sdk.Examples.SimpleOpenTelemetry;
 
@@ -11,7 +10,7 @@ class Program
     {
         var braintrust = Braintrust.Get();
         var tracerProvider = braintrust.OpenTelemetryCreate();
-        var activitySource = BraintrustTracing.GetActivitySource();
+        var activitySource = braintrust.GetActivitySource();
 
         using (var activity = activitySource.StartActivity("hello-dotnet"))
         {
@@ -29,8 +28,5 @@ class Program
                 Console.WriteLine($"\n\n  Example complete! View your data in Braintrust: {url}");
             }
         }
-
-        // Dispose the tracer provider to flush any remaining spans
-        tracerProvider?.Dispose();
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.ClientModel;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -89,6 +90,45 @@ internal sealed class InstrumentedChatClient : ChatClient
     }
 
     /// <summary>
+    /// Intercepts CompleteChat to add span instrumentation (synchronous).
+    /// </summary>
+    public override ClientResult<ChatCompletion> CompleteChat(IEnumerable<ChatMessage> messages, ChatCompletionOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        // Start a span for the chat completion
+        var activity = _activitySource.StartActivity("Chat Completion", ActivityKind.Client);
+
+        try
+        {
+            // Call the underlying client - this will trigger HTTP call and capture JSON
+            var result = _client.CompleteChat(messages, options, cancellationToken);
+
+            // Get the captured HTTP JSON from Activity baggage
+            if (activity != null && _captureMessageContent)
+            {
+                TagActivity(activity);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            // Record the exception in the span
+            if (activity != null)
+            {
+                activity.SetStatus(ActivityStatusCode.Error, ex.Message);
+                activity.RecordException(ex);
+            }
+            // intentionally re-throwing original exception
+            throw;
+        }
+        finally
+        {
+            // Always dispose the activity
+            activity?.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Intercepts CompleteChatAsync to add span instrumentation.
     /// </summary>
     public override async Task<ClientResult<ChatCompletion>> CompleteChatAsync(IEnumerable<ChatMessage> messages, ChatCompletionOptions? options = null, CancellationToken cancellationToken = default)
@@ -104,7 +144,7 @@ internal sealed class InstrumentedChatClient : ChatClient
             // Get the captured HTTP JSON from Activity baggage
             if (activity != null && _captureMessageContent)
             {
-                tagActivity(activity);
+                TagActivity(activity);
             }
 
             return result;
@@ -128,7 +168,7 @@ internal sealed class InstrumentedChatClient : ChatClient
     }
 
     // TODO: Override other methods as needed (CompleteChatStreaming, etc.)
-    private void tagActivity(Activity activity)
+    private void TagActivity(Activity activity)
     {
         activity.SetTag("provider", "openai");
         {
