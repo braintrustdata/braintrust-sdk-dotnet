@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    # we want to run ubuntu-latest but we'll pin to a specific version so workflow is reproducable
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up .NET 8.0
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Check code formatting
+      run: dotnet format --verify-no-changes
+
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+
+    - name: Run tests
+      run: dotnet test --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: '**/TestResults/*.trx'
