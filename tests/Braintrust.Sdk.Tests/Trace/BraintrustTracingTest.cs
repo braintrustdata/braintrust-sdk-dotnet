@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Braintrust.Sdk.Tests.Trace;
 
+[Collection("BraintrustGlobals")]
 public class BraintrustTracingTest
 {
     [Fact]

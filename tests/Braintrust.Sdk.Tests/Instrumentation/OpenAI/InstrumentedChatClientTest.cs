@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Braintrust.Sdk.Tests.Instrumentation.OpenAI;
 
+[Collection("BraintrustGlobals")]
 public class InstrumentedChatClientTest
 {
     [Fact]

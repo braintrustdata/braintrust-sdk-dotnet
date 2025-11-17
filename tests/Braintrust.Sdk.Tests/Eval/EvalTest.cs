@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
@@ -7,15 +8,27 @@ using Xunit;
 
 namespace Braintrust.Sdk.Tests.Eval;
 
+[Collection("BraintrustGlobals")]
 public class EvalTest : IDisposable
 {
+    private readonly ActivityListener _activityListener;
+
     public EvalTest()
     {
         Braintrust.ResetForTest();
+
+        // Set up activity listener so activities are created
+        _activityListener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "braintrust-dotnet",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded
+        };
+        ActivitySource.AddActivityListener(_activityListener);
     }
 
     public void Dispose()
     {
+        _activityListener?.Dispose();
         Braintrust.ResetForTest();
     }
 
