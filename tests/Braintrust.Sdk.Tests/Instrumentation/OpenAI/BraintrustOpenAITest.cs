@@ -15,6 +15,7 @@ using Braintrust.Sdk.Instrumentation.OpenAI;
 using Braintrust.Sdk.Trace;
 using OpenAI;
 using OpenAI.Chat;
+using OpenAI.Files;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -213,6 +214,36 @@ public class BraintrustOpenAITest : IDisposable
     }
 
     [Fact]
+    public async Task FileUpload_WithNonSeekableStream_PersistsBody()
+    {
+        SetupOpenTelemetry();
+        var activitySource = BraintrustTracing.GetActivitySource();
+
+        var fileUploadResponse = """
+            {
+                "id": "file-123",
+                "object": "file",
+                "bytes": 9,
+                "created_at": 0,
+                "filename": "demo.txt",
+                "purpose": "assistants"
+            }
+            """;
+
+        var mockTransport = new MockPipelineTransport(fileUploadResponse);
+        var options = new OpenAIClientOptions { Transport = mockTransport };
+        var client = BraintrustOpenAI.WrapOpenAI(activitySource, "test-api-key", options);
+
+        using var payload = new NonSeekableStream(new MemoryStream(Encoding.UTF8.GetBytes("demo data")));
+        var fileClient = client.GetOpenAIFileClient();
+        var uploadedFile = await fileClient.UploadFileAsync(payload, "demo.txt", FileUploadPurpose.Assistants);
+
+        Assert.NotNull(uploadedFile);
+        Assert.Contains("demo data", mockTransport.Handler.LastRequestBody ?? string.Empty);
+        Assert.False(string.IsNullOrEmpty(mockTransport.Handler.LastRequestContentType));
+    }
+
+    [Fact]
     public void WrapOpenAI_AcceptsCustomTransport()
     {
         // Arrange
@@ -247,6 +278,27 @@ public class BraintrustOpenAITest : IDisposable
             BraintrustOpenAI.WrapOpenAI(activitySource, null!);
         });
     }
+
+    [Fact]
+    public void WrapOpenAI_AllClientGettersWork()
+    {
+        // Arrange
+        SetupOpenTelemetry();
+        var activitySource = BraintrustTracing.GetActivitySource();
+        var mockTransport = new MockPipelineTransport("{}");
+        var options = new OpenAIClientOptions { Transport = mockTransport };
+
+        // Act - verify all client getters work without throwing
+        var client = BraintrustOpenAI.WrapOpenAI(activitySource, "test-api-key", options);
+
+        // Assert - these should all work without throwing null reference exceptions
+        Assert.NotNull(client.GetChatClient("gpt-4"));
+        Assert.NotNull(client.GetOpenAIFileClient());
+        Assert.NotNull(client.GetEmbeddingClient("text-embedding-3-small"));
+        Assert.NotNull(client.GetImageClient("dall-e-3"));
+        Assert.NotNull(client.GetAudioClient("whisper-1"));
+        Assert.NotNull(client.GetModerationClient("text-moderation-latest"));
+    }
 }
 
 /// <summary>
@@ -257,13 +309,16 @@ internal class MockHttpMessageHandler : HttpMessageHandler
     private readonly string? _responseBody;
     private readonly bool _shouldThrow;
 
+    public string? LastRequestBody { get; private set; }
+    public string? LastRequestContentType { get; private set; }
+
     public MockHttpMessageHandler(string? responseBody, bool shouldThrow = false)
     {
         _responseBody = responseBody;
         _shouldThrow = shouldThrow;
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(
+    protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
@@ -272,12 +327,23 @@ internal class MockHttpMessageHandler : HttpMessageHandler
             throw new InvalidOperationException("Mock transport error");
         }
 
+        if (request.Content != null)
+        {
+            LastRequestContentType = request.Content.Headers.ContentType?.MediaType;
+            LastRequestBody = await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            LastRequestBody = null;
+            LastRequestContentType = null;
+        }
+
         var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
         {
             Content = new StringContent(_responseBody ?? "{}", Encoding.UTF8, "application/json")
         };
 
-        return Task.FromResult(response);
+        return response;
     }
 }
 
@@ -288,11 +354,12 @@ internal class MockPipelineTransport : PipelineTransport
 {
     private readonly HttpClient _httpClient;
     private readonly HttpClientPipelineTransport _transport;
+    public MockHttpMessageHandler Handler { get; }
 
     public MockPipelineTransport(string? responseBody, bool shouldThrow = false)
     {
-        var mockHandler = new MockHttpMessageHandler(responseBody, shouldThrow);
-        _httpClient = new HttpClient(mockHandler);
+        Handler = new MockHttpMessageHandler(responseBody, shouldThrow);
+        _httpClient = new HttpClient(Handler);
         _transport = new HttpClientPipelineTransport(_httpClient);
     }
 
@@ -309,6 +376,45 @@ internal class MockPipelineTransport : PipelineTransport
     protected override ValueTask ProcessCoreAsync(PipelineMessage message)
     {
         return _transport.ProcessAsync(message);
+    }
+}
+
+internal sealed class NonSeekableStream : Stream
+{
+    private readonly Stream _inner;
+
+    public NonSeekableStream(Stream inner)
+    {
+        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+    }
+
+    public override bool CanRead => _inner.CanRead;
+    public override bool CanSeek => false;
+    public override bool CanWrite => _inner.CanWrite;
+    public override long Length => throw new NotSupportedException();
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override void Flush() => _inner.Flush();
+
+    public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _inner.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }
 

@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Braintrust.Sdk.Tests;
 
+[Collection("BraintrustGlobals")]
 public class BraintrustTest : IDisposable
 {
     // Reset singleton between tests to ensure test isolation

@@ -1,4 +1,5 @@
 using System;
+using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Diagnostics;
 using System.IO;
@@ -64,10 +65,16 @@ internal sealed class BraintrustPipelineTransport : PipelineTransport
 
         try
         {
-            using var memoryStream = new MemoryStream();
+            // Capture the content to a buffer so we can both read it and replay it
+            var memoryStream = new MemoryStream();
             request.Content.WriteTo(memoryStream, cancellationToken: default);
-            memoryStream.Position = 0;
-            using var reader = new StreamReader(memoryStream);
+            var capturedBytes = memoryStream.ToArray();
+
+            // Replace the request content with a replayable version from the captured bytes
+            request.Content = BinaryContent.Create(new BinaryData(capturedBytes));
+
+            // Return the captured content as a string for telemetry
+            using var reader = new StreamReader(new MemoryStream(capturedBytes));
             return reader.ReadToEnd();
         }
         catch
@@ -82,10 +89,16 @@ internal sealed class BraintrustPipelineTransport : PipelineTransport
 
         try
         {
-            using var memoryStream = new MemoryStream();
+            // Capture the content to a buffer so we can both read it and replay it
+            var memoryStream = new MemoryStream();
             await request.Content.WriteToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
-            memoryStream.Position = 0;
-            using var reader = new StreamReader(memoryStream);
+            var capturedBytes = memoryStream.ToArray();
+
+            // Replace the request content with a replayable version from the captured bytes
+            request.Content = BinaryContent.Create(new BinaryData(capturedBytes));
+
+            // Return the captured content as a string for telemetry
+            using var reader = new StreamReader(new MemoryStream(capturedBytes));
             return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
