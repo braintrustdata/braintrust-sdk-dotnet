@@ -22,6 +22,12 @@ using Xunit;
 
 namespace Braintrust.Sdk.Tests.Instrumentation.OpenAI;
 
+/// <summary>
+/// Tests for OpenAI instrumentation.
+/// Uses [Collection("BraintrustGlobals")] to prevent race conditions with shared ActivitySource.
+/// See <see cref="BraintrustGlobalsCollection"/> for details.
+/// </summary>
+[Collection("BraintrustGlobals")]
 public class BraintrustOpenAITest : IDisposable
 {
     private readonly ActivityListener _activityListener;
@@ -47,9 +53,18 @@ public class BraintrustOpenAITest : IDisposable
 
     public void Dispose()
     {
+        // Ensure all spans are flushed before disposing
+        if (_tracerProvider != null)
+        {
+            _tracerProvider.ForceFlush();
+            _tracerProvider.Dispose();
+        }
+
         _activityListener?.Dispose();
-        _tracerProvider?.Dispose();
         Braintrust.ResetForTest();
+
+        // Clear the spans list to ensure no state leaks between tests
+        _exportedSpans.Clear();
     }
 
     private TracerProvider SetupOpenTelemetry()
@@ -77,6 +92,10 @@ public class BraintrustOpenAITest : IDisposable
     {
         // Arrange
         SetupOpenTelemetry();
+
+        // Defensive: ensure spans list is clear before test starts
+        _exportedSpans.Clear();
+
         var activitySource = BraintrustTracing.GetActivitySource();
 
         var mockResponse = """
@@ -158,6 +177,10 @@ public class BraintrustOpenAITest : IDisposable
     {
         // Arrange
         SetupOpenTelemetry();
+
+        // Defensive: ensure spans list is clear before test starts
+        _exportedSpans.Clear();
+
         var activitySource = BraintrustTracing.GetActivitySource();
 
         var mockTransport = new MockPipelineTransport(null, shouldThrow: true);

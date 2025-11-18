@@ -2,6 +2,8 @@ using System;
 using System.Threading;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
+using Microsoft.Extensions.Logging;
+using OpenTelemetry.Metrics;
 
 namespace Braintrust.Sdk;
 
@@ -38,7 +40,7 @@ public sealed class Braintrust
                 current = _instance;
                 if (current == null)
                 {
-                    _instance = Of(BraintrustConfig.FromEnvironment());
+                    _instance = Of(BraintrustConfig.FromEnvironment(), true);
                     current = _instance;
                     // TODO: Add logging: "initialized global Braintrust sdk {SdkVersion}"
                 }
@@ -50,7 +52,9 @@ public sealed class Braintrust
     /// <summary>
     /// Get or create the global Braintrust instance from the given config.
     /// </summary>
-    public static Braintrust Get(BraintrustConfig config)
+    /// <param name="config">Braintrust configuration</param>
+    /// <param name="autoManageOpenTelemetry">When true, automatically set up Braintrust connection and shutdown hooks</param>
+    public static Braintrust Get(BraintrustConfig config, Boolean autoManageOpenTelemetry = true)
     {
         var current = _instance;
         if (current == null)
@@ -60,7 +64,7 @@ public sealed class Braintrust
                 current = _instance;
                 if (current == null)
                 {
-                    _instance = Of(config);
+                    _instance = Of(config, autoManageOpenTelemetry);
                     current = _instance;
                     // TODO: Add logging: "initialized global Braintrust sdk {SdkVersion}"
                 }
@@ -96,27 +100,24 @@ public sealed class Braintrust
     /// <summary>
     /// Create a new Braintrust instance from the given config.
     /// </summary>
-    public static Braintrust Of(BraintrustConfig config)
+    public static Braintrust Of(BraintrustConfig config, Boolean autoManageOpenTelemetry = true)
     {
         var apiClient = BraintrustApiClient.Of(config);
-
-        // TODO: Initialize PromptLoader when available
-        // var promptLoader = BraintrustPromptLoader.Of(config, apiClient);
-
-        return new Braintrust(config, apiClient);
+        return new Braintrust(config, apiClient, autoManageOpenTelemetry);
     }
 
     public BraintrustConfig Config { get; }
     public IBraintrustApiClient ApiClient { get; }
+    private volatile OpenTelemetry.Trace.TracerProvider? _tracer;
 
-    // TODO: Add when PromptLoader is implemented
-    // public BraintrustPromptLoader PromptLoader { get; }
-
-    private Braintrust(BraintrustConfig config, IBraintrustApiClient apiClient)
+    private Braintrust(BraintrustConfig config, IBraintrustApiClient apiClient, Boolean autoManageOpenTelemetry)
     {
         Config = config ?? throw new ArgumentNullException(nameof(config));
         ApiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
-        // TODO: Initialize other components when available
+        if (autoManageOpenTelemetry)
+        {
+            this._tracer = Trace.BraintrustTracing.CreateTracerProvider(this.Config);
+        }
     }
 
     /// <summary>
@@ -129,49 +130,36 @@ public sealed class Braintrust
     }
 
     /// <summary>
-    /// Quick start method that sets up OpenTelemetry with this Braintrust.
-    ///
-    /// If you're looking for more options for configuring Braintrust/OpenTelemetry,
-    /// consult the Enable method.
-    /// </summary>
-    public OpenTelemetry.Trace.TracerProvider OpenTelemetryCreate()
-    {
-        return OpenTelemetryCreate(registerGlobal: true);
-    }
-
-    /// <summary>
-    /// Quick start method that sets up OpenTelemetry with this Braintrust.
-    ///
-    /// If you're looking for more options for configuring Braintrust and OpenTelemetry,
-    /// consult the Enable method.
-    /// </summary>
-    public OpenTelemetry.Trace.TracerProvider OpenTelemetryCreate(bool registerGlobal)
-    {
-        return Trace.BraintrustTracing.Of(Config, registerGlobal);
-    }
-
-    /// <summary>
     /// Add Braintrust to existing OpenTelemetry TracerProviderBuilder.
     ///
     /// This method provides the most options for configuring Braintrust and OpenTelemetry.
-    /// If you're looking for a more user-friendly setup, consult the OpenTelemetryCreate methods.
     ///
-    /// NOTE: This method should only be invoked once. Enabling Braintrust multiple times is
-    /// unsupported and may lead to undesired behavior.
+    /// NOTE: This method should only be invoked once for each builder. Enabling Braintrust multiple times is unsupported and may lead to undesired behavior.
     /// </summary>
-    public void OpenTelemetryEnable(OpenTelemetry.Trace.TracerProviderBuilder tracerProviderBuilder)
+    public void OpenTelemetryEnable(OpenTelemetry.Trace.TracerProviderBuilder tracerProviderBuilder, ILoggingBuilder loggingBuilder, MeterProviderBuilder meterProviderBuilder)
     {
-        Trace.BraintrustTracing.Enable(Config, tracerProviderBuilder);
+        if (this._tracer != null)
+        {
+            throw new System.InvalidOperationException("cannot call enable for Braintrusts which autoManage Open Telemetry");
+        }
+        Trace.BraintrustTracing.Enable(Config, tracerProviderBuilder, loggingBuilder, meterProviderBuilder);
     }
 
-    // TODO: Implement when we have Eval
-    // /// <summary>
-    // /// Create a new eval builder.
-    // /// </summary>
-    // public Eval.Builder<TInput, TOutput> EvalBuilder<TInput, TOutput>()
-    // {
-    //     return Eval.Builder<TInput, TOutput>()
-    //         .WithConfig(Config)
-    //         .WithApiClient(ApiClient);
-    // }
+    /// <summary>
+    /// Get the ActivitySource for creating spans. Use this to instrument your code with Braintrust tracing.
+    /// </summary>
+    public System.Diagnostics.ActivitySource GetActivitySource()
+    {
+        return Trace.BraintrustTracing.GetActivitySource();
+    }
+
+    /// <summary>
+    /// Create a new eval builder.
+    /// </summary>
+    public Eval.Eval<TInput, TOutput>.Builder EvalBuilder<TInput, TOutput>()
+    {
+        return Eval.Eval<TInput, TOutput>.NewBuilder()
+            .Config(Config)
+            .ApiClient(ApiClient);
+    }
 }

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Braintrust.Sdk.Config;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -21,31 +23,38 @@ public static class BraintrustTracing
     private static readonly string InstrumentationVersion =
         typeof(BraintrustTracing).Assembly.GetName().Version?.ToString() ?? "0.0.1";
 
-    /// <summary>
-    /// Quick start method that sets up global OpenTelemetry with Braintrust from environment config.
-    /// </summary>
-    public static TracerProvider Quickstart()
-    {
-        var config = BraintrustConfig.FromEnvironment();
-        return Of(config, registerGlobal: true);
-    }
+    private static readonly Lazy<ActivitySource> _activitySource = new Lazy<ActivitySource>(
+        () => new ActivitySource(InstrumentationName, InstrumentationVersion));
+
 
     /// <summary>
-    /// Set up OpenTelemetry with Braintrust configuration.
+    /// Set up an OpenTelemetry tracer provier with Braintrust configuration.
+    ///
+    /// Also set up shutdown hooks to ensure all traces are flushed to Braintrust upon app termination.
     /// </summary>
     /// <param name="config">Braintrust configuration</param>
-    /// <param name="registerGlobal">Whether to register as the global TracerProvider (not used in .NET, kept for API compatibility)</param>
-    public static TracerProvider Of(BraintrustConfig config, bool registerGlobal = false)
+    public static TracerProvider CreateTracerProvider(BraintrustConfig config)
     {
-        var builder = OpenTelemetry.Sdk.CreateTracerProviderBuilder();
-        Enable(config, builder);
+        var tracerBuilder = OpenTelemetry.Sdk.CreateTracerProviderBuilder();
+        var meterBuilder = OpenTelemetry.Sdk.CreateMeterProviderBuilder();
+        var logger = LoggerFactory.Create(loggingBuilder =>
+        {
+            Enable(config, tracerBuilder, loggingBuilder, meterBuilder);
+        });
+        logger.Dispose(); // not used
 
-        var provider = builder.Build();
-
-        // Note: In .NET, there's no direct equivalent to Java's GlobalOpenTelemetry.set()
-        // The TracerProvider is typically managed through dependency injection or kept as a singleton
-        // Users can store the returned provider and access it as needed
-
+        var provider = tracerBuilder.Build();
+        AppDomain.CurrentDomain.ProcessExit += (sender, e) =>
+        {
+            try
+            {
+                provider.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error shutting down Braintrust otel: {ex.Message}");
+            }
+        };
         return provider;
     }
 
@@ -53,43 +62,42 @@ public static class BraintrustTracing
     /// Add Braintrust configuration to an existing TracerProviderBuilder.
     /// This method provides the most options for configuring Braintrust and OpenTelemetry.
     /// </summary>
-    public static void Enable(BraintrustConfig config, TracerProviderBuilder tracerProviderBuilder)
+    public static void Enable(BraintrustConfig config, TracerProviderBuilder tracerProviderBuilder, ILoggingBuilder loggingBuilder, MeterProviderBuilder meterProviderBuilder)
     {
-        // Set up resource with service name and version
+        // NOTE: not using otel logs or metrics at this time. In the method signature for future usage.
+
         var resource = ResourceBuilder.CreateDefault()
             .AddService(
                 serviceName: OtelServiceName,
                 serviceVersion: InstrumentationVersion)
             .Build();
 
+        var spanProcessor = new BraintrustSpanProcessor(config);
+
         tracerProviderBuilder
             .SetResourceBuilder(ResourceBuilder.CreateDefault()
                 .AddService(serviceName: OtelServiceName, serviceVersion: InstrumentationVersion))
             .AddSource(InstrumentationName)
-            .AddProcessor(new BraintrustSpanProcessor(config))
+            .AddProcessor(spanProcessor)
             .AddOtlpExporter(otlpOptions =>
             {
-                // Configure OTLP HTTP exporter to send to Braintrust
                 otlpOptions.Protocol = OtlpExportProtocol.HttpProtobuf;
                 otlpOptions.Endpoint = new Uri($"{config.ApiUrl}{config.TracesPath}");
                 otlpOptions.Headers = BuildHeaders(config);
                 otlpOptions.TimeoutMilliseconds = (int)config.RequestTimeout.TotalMilliseconds;
             })
             .SetSampler(new AlwaysOnSampler());
-
-        // TODO: Add per-parent HTTP header routing like Java SDK
-        // Currently parent info is sent via span attributes; full header-based routing
-        // requires custom HTTP handling
-        // TODO: Add shutdown hook for graceful cleanup
     }
 
+
     /// <summary>
-    /// Get an ActivitySource for instrumentation. In .NET, use ActivitySource instead of Tracer.
+    /// Get the singleton ActivitySource for instrumentation.
     /// </summary>
     public static ActivitySource GetActivitySource()
     {
-        return new ActivitySource(InstrumentationName, InstrumentationVersion);
+        return _activitySource.Value;
     }
+
 
     private static string BuildHeaders(BraintrustConfig config)
     {
