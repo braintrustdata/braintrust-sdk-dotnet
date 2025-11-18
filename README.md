@@ -11,3 +11,30 @@ This library provides tools for **evaluating** and **tracing** AI applications i
 - **Integrate** seamlessly with OpenAI and other LLM providers
 
 This SDK is currently in BETA status and APIs may change.
+
+## Running Examples
+
+### Setup
+
+Install the dotnet 8 framework
+
+- Macos: `brew install dotnet-sdk@8`
+- Linux: Follow [these instructions](https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-install?tabs=dotnet10&pivots=os-linux-ubuntu-2404)
+- Windows: Follow [these instructions](https://learn.microsoft.com/en-us/dotnet/core/install/windows)
+
+### List All Examples
+
+```bash
+ls -l examples/
+# >>> outputs
+ EvalExample/
+ OpenAIInstrumentation/
+ SimpleOpenTelemetry/
+ ... # rest of the examples
+```
+
+### Run An Example
+
+```bash
+dotnet run --project examples/SimpleOpenTelemetry
+```
