@@ -15,6 +15,8 @@ namespace Braintrust.Sdk.Eval;
 /// <typeparam name="TInput">The type of input data for the evaluation</typeparam>
 /// <typeparam name="TOutput">The type of output produced by the task</typeparam>
 public sealed class Eval<TInput, TOutput>
+    where TInput : notnull
+    where TOutput : notnull
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -173,9 +175,17 @@ public sealed class Eval<TInput, TOutput>
         string experimentName)
     {
         var baseUri = new Uri(appUrl);
-        var path = $"/app/{orgAndProject.OrgInfo.Name}/p/{orgAndProject.Project.Name}/experiments/{experimentName}";
-        return new UriBuilder(baseUri.Scheme, baseUri.Host, baseUri.Port, path).Uri.ToString();
+        var path = string.Join("/",
+            "app",
+            Uri.EscapeDataString(orgAndProject.OrgInfo.Name),
+            "p",
+            Uri.EscapeDataString(orgAndProject.Project.Name),
+            "experiments",
+            Uri.EscapeDataString(experimentName));
+
+        return new UriBuilder(baseUri.Scheme, baseUri.Host, baseUri.Port, "/" + path).Uri.ToString();
     }
+
 
     /// <summary>
     /// Creates a new eval builder.

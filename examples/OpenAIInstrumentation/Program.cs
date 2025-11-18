@@ -21,10 +21,11 @@ class Program
     static async Task Main(string[] args)
     {
         // Check for API key
-        var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        if (string.IsNullOrEmpty(apiKey))
+        var openAIApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        if (string.IsNullOrEmpty(openAIApiKey))
         {
-            Console.WriteLine("\nWARNING: OPENAI_API_KEY environment variable not found. This example will likely fail.\n");
+            Console.WriteLine("ERROR: OPENAI_API_KEY environment variable not set. Bailing.");
+            return;
         }
 
         // Step 1: Initialize Braintrust and create OpenTelemetry provider
@@ -32,7 +33,7 @@ class Program
         var activitySource = braintrust.GetActivitySource();
 
         // Step 2: Create an instrumented OpenAI client
-        var instrumentedClient = BraintrustOpenAI.WrapOpenAI(activitySource, apiKey);
+        var instrumentedClient = BraintrustOpenAI.WrapOpenAI(activitySource, openAIApiKey);
 
         // Step 3: Create a root span for the entire example
         using (var rootActivity = activitySource.StartActivity("openai-dotnet-instrumentation-example"))
@@ -74,6 +75,27 @@ class Program
         Console.WriteLine($"Response: {response.Value.Content[0].Text}");
         Console.WriteLine($"Model: {response.Value.Model}");
         Console.WriteLine($"Finish Reason: {response.Value.FinishReason}");
+
+        if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() < 0) // change to true if you wish to demo images
+        {
+            Console.WriteLine("\n~~~ MULTI-MODAL PROMPT WITH INLINE IMAGE\n");
+            var demoImageBytes = Convert.FromBase64String(
+              // 1x1 reg pixel PNG
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+              );
+
+            var multimodalMessages = new ChatMessage[]
+            {
+            new UserChatMessage(new[]
+            {
+                ChatMessageContentPart.CreateTextPart("Summarize what you see in this image."),
+                ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(demoImageBytes), "image/png")
+            })
+            };
+
+            var multimodalResponse = await chatClient.CompleteChatAsync(multimodalMessages);
+            Console.WriteLine($"Vision Response: {multimodalResponse.Value.Content[0].Text}");
+        }
     }
 
     // TODO: Add streaming example when instrumentation is fully implemented

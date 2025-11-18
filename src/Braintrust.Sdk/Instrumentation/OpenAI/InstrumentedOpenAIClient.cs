@@ -6,7 +6,12 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenAI;
+using OpenAI.Audio;
 using OpenAI.Chat;
+using OpenAI.Embeddings;
+using OpenAI.Files;
+using OpenAI.Images;
+using OpenAI.Moderations;
 using OpenTelemetry.Trace;
 
 namespace Braintrust.Sdk.Instrumentation.OpenAI;
@@ -53,7 +58,53 @@ internal sealed class InstrumentedOpenAIClient : OpenAIClient
         return InstrumentedChatClient.Create(chatClient, _activitySource, _captureMessageContent);
     }
 
-    // TODO: Override other methods as needed (GetEmbeddingClient, etc.)
+    /// <summary>
+    /// Delegates GetOpenAIFileClient to the wrapped client.
+    /// </summary>
+    public override OpenAIFileClient GetOpenAIFileClient()
+    {
+        return _client.GetOpenAIFileClient();
+    }
+
+    /// <summary>
+    /// Delegates GetEmbeddingClient to the wrapped client.
+    /// TODO: Add instrumentation for embeddings if needed.
+    /// </summary>
+    public override EmbeddingClient GetEmbeddingClient(string model)
+    {
+        return _client.GetEmbeddingClient(model);
+    }
+
+    /// <summary>
+    /// Delegates GetImageClient to the wrapped client.
+    /// TODO: Add instrumentation for images if needed.
+    /// </summary>
+    public override ImageClient GetImageClient(string model)
+    {
+        return _client.GetImageClient(model);
+    }
+
+    /// <summary>
+    /// Delegates GetAudioClient to the wrapped client.
+    /// TODO: Add instrumentation for audio if needed.
+    /// </summary>
+    public override AudioClient GetAudioClient(string model)
+    {
+        return _client.GetAudioClient(model);
+    }
+
+    /// <summary>
+    /// Delegates GetModerationClient to the wrapped client.
+    /// TODO: Add instrumentation for moderation if needed.
+    /// </summary>
+    public override ModerationClient GetModerationClient(string model)
+    {
+        return _client.GetModerationClient(model);
+    }
+
+    // Note: GetAssistantClient, GetVectorStoreClient, and GetBatchClient are experimental APIs
+    // that may not exist in all versions. They will fall through to the base class if called.
+    // TODO: Add delegation for experimental APIs if they become stable
 }
 
 /// <summary>

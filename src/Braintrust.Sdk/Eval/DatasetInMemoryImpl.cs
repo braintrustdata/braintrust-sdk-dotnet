@@ -8,6 +8,8 @@ namespace Braintrust.Sdk.Eval;
 /// A dataset held entirely in memory.
 /// </summary>
 internal class DatasetInMemoryImpl<TInput, TOutput> : Dataset<TInput, TOutput>
+    where TInput : notnull
+    where TOutput : notnull
 {
     private readonly IReadOnlyList<DatasetCase<TInput, TOutput>> _cases;
     private readonly string _id;

@@ -35,18 +35,12 @@ public sealed class Braintrust
         var current = _instance;
         if (current == null)
         {
-            lock (_lock)
-            {
-                current = _instance;
-                if (current == null)
-                {
-                    _instance = Of(BraintrustConfig.FromEnvironment(), true);
-                    current = _instance;
-                    // TODO: Add logging: "initialized global Braintrust sdk {SdkVersion}"
-                }
-            }
+            return Get(BraintrustConfig.FromEnvironment(), true);
         }
-        return current;
+        else
+        {
+            return current;
+        }
     }
 
     /// <summary>
@@ -59,16 +53,7 @@ public sealed class Braintrust
         var current = _instance;
         if (current == null)
         {
-            lock (_lock)
-            {
-                current = _instance;
-                if (current == null)
-                {
-                    _instance = Of(config, autoManageOpenTelemetry);
-                    current = _instance;
-                    // TODO: Add logging: "initialized global Braintrust sdk {SdkVersion}"
-                }
-            }
+            current = Set(Of(config, autoManageOpenTelemetry));
         }
         return current;
     }
@@ -157,6 +142,8 @@ public sealed class Braintrust
     /// Create a new eval builder.
     /// </summary>
     public Eval.Eval<TInput, TOutput>.Builder EvalBuilder<TInput, TOutput>()
+        where TInput : notnull
+        where TOutput : notnull
     {
         return Eval.Eval<TInput, TOutput>.NewBuilder()
             .Config(Config)
