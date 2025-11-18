@@ -11,6 +11,8 @@ namespace Braintrust.Sdk.Eval;
 /// <typeparam name="TInput">Type of the input data</typeparam>
 /// <typeparam name="TOutput">Type of the output data</typeparam>
 public interface Dataset<TInput, TOutput>
+    where TInput : notnull
+    where TOutput : notnull
 {
     /// <summary>
     /// Open a cursor to iterate through dataset cases.

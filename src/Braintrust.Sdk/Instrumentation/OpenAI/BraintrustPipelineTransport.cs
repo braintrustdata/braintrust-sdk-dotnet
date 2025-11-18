@@ -94,7 +94,7 @@ internal sealed class BraintrustPipelineTransport : PipelineTransport
         }
     }
 
-    private string? CaptureResponse(PipelineResponse response)
+    private string? CaptureResponse(PipelineResponse? response)
     {
         if (response?.Content == null) return null;
 
@@ -110,7 +110,7 @@ internal sealed class BraintrustPipelineTransport : PipelineTransport
         }
     }
 
-    private async Task<string?> CaptureResponseAsync(PipelineResponse response, CancellationToken cancellationToken)
+    private async Task<string?> CaptureResponseAsync(PipelineResponse? response, CancellationToken cancellationToken)
     {
         if (response?.Content == null) return null;
 

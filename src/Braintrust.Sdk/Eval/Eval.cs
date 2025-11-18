@@ -15,6 +15,8 @@ namespace Braintrust.Sdk.Eval;
 /// <typeparam name="TInput">The type of input data for the evaluation</typeparam>
 /// <typeparam name="TOutput">The type of output produced by the task</typeparam>
 public sealed class Eval<TInput, TOutput>
+    where TInput : notnull
+    where TOutput : notnull
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

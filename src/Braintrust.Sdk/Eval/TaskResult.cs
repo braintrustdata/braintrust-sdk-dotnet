@@ -9,4 +9,6 @@ namespace Braintrust.Sdk.Eval;
 /// <param name="DatasetCase">The dataset case the task ran against to produce the result</param>
 public record TaskResult<TInput, TOutput>(
     TOutput Result,
-    DatasetCase<TInput, TOutput> DatasetCase);
+    DatasetCase<TInput, TOutput> DatasetCase)
+    where TInput : notnull
+    where TOutput : notnull;

@@ -142,6 +142,8 @@ public sealed class Braintrust
     /// Create a new eval builder.
     /// </summary>
     public Eval.Eval<TInput, TOutput>.Builder EvalBuilder<TInput, TOutput>()
+        where TInput : notnull
+        where TOutput : notnull
     {
         return Eval.Eval<TInput, TOutput>.NewBuilder()
             .Config(Config)

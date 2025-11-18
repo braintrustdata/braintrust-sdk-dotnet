@@ -6,6 +6,8 @@ namespace Braintrust.Sdk.Eval;
 /// <typeparam name="TInput">Type of the input data</typeparam>
 /// <typeparam name="TOutput">Type of the output data</typeparam>
 public interface Task<TInput, TOutput>
+    where TInput : notnull
+    where TOutput : notnull
 {
     /// <summary>
     /// Apply the task to a dataset case and return the result.
