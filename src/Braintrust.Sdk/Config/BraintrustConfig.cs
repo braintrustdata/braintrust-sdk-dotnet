@@ -64,7 +64,7 @@ public sealed class BraintrustConfig : BaseConfig
         Debug = GetConfig("BRAINTRUST_DEBUG", false);
         RequestTimeout = TimeSpan.FromSeconds(GetConfig("BRAINTRUST_REQUEST_TIMEOUT", 30));
 
-        if (DefaultProjectId == null && DefaultProjectName == null)
+        if (string.IsNullOrEmpty(DefaultProjectId) && string.IsNullOrEmpty(DefaultProjectName))
         {
             // should never happen
             throw new InvalidOperationException("A project name or ID is required.");
@@ -95,11 +95,8 @@ public sealed class BraintrustConfig : BaseConfig
         }
         else
         {
-            return null;
+            // should never happen
+            throw new InvalidOperationException("A project name or ID is required.");
         }
     }
-
-    // TODO: Implement FetchProjectUri when we have BraintrustApiClient
-    // [Obsolete("Please use Braintrust.ProjectUri() instead")]
-    // public Uri FetchProjectUri() { ... }
 }

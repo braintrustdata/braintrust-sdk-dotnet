@@ -29,7 +29,6 @@ class Program
 
         // Step 1: Initialize Braintrust and create OpenTelemetry provider
         var braintrust = Braintrust.Get();
-        var tracerProvider = braintrust.OpenTelemetryCreate();
         var activitySource = braintrust.GetActivitySource();
 
         // Step 2: Create an instrumented OpenAI client

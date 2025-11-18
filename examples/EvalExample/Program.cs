@@ -21,7 +21,6 @@ class Program
 
         // Initialize
         var braintrust = Braintrust.Get();
-        var tracerProvider = braintrust.OpenTelemetryCreate();
         var activitySource = braintrust.GetActivitySource();
         OpenAIClient openAIClient = BraintrustOpenAI.WrapOpenAI(activitySource, openAIApiKey);
 

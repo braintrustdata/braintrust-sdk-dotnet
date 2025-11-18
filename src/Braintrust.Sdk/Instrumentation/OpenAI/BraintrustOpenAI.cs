@@ -26,23 +26,6 @@ public static class BraintrustOpenAI
     /// <param name="openAIApiKey">The OpenAI API key</param>
     /// <param name="options">Optional OpenAI client options for custom configuration</param>
     /// <returns>An instrumented OpenAI client that will emit telemetry</returns>
-    /// <example>
-    /// <code>
-    /// var braintrust = Braintrust.Get();
-    /// var tracerProvider = braintrust.OpenTelemetryCreate();
-    /// var activitySource = BraintrustTracing.GetActivitySource();
-    ///
-    /// // Simple usage
-    /// var client = BraintrustOpenAI.WrapOpenAI(activitySource, apiKey);
-    ///
-    /// // With custom options
-    /// var options = new OpenAIClientOptions { /* custom config */ };
-    /// var client = BraintrustOpenAI.WrapOpenAI(activitySource, apiKey, options);
-    ///
-    /// // Use the instrumented client normally - telemetry will be captured automatically
-    /// var response = await client.GetChatClient("gpt-4").CompleteChatAsync(messages);
-    /// </code>
-    /// </example>
     public static OpenAIClient WrapOpenAI(
         ActivitySource activitySource,
         string openAIApiKey,
@@ -53,21 +36,11 @@ public static class BraintrustOpenAI
         if (string.IsNullOrEmpty(openAIApiKey))
             throw new ArgumentNullException(nameof(openAIApiKey));
 
-        // Use provided options or create default ones
         options ??= new OpenAIClientOptions();
-
-        // Wrap their transport if they have one, or create a default transport
-        // This allows users to provide custom transports and we'll just intercept the data
         var innerTransport = options.Transport ?? new HttpClientPipelineTransport(new HttpClient());
         options.Transport = new BraintrustPipelineTransport(innerTransport);
-
-        // Create API key credential
         var credential = new ApiKeyCredential(openAIApiKey);
-
-        // Create the OpenAI client - it will now use our transport wrapper for all requests
         var openAIClient = new OpenAIClient(credential, options);
-
-        // Wrap the client with our instrumentation
         return OpenAITelemetry.Builder(activitySource)
             .SetCaptureMessageContent(true)
             .Build()

@@ -88,20 +88,18 @@ public sealed class Eval<TInput, TOutput>
             "eval",
             ActivityKind.Client,
             parentContext: default(ActivityContext)); // No parent - makes this a root span
-
         if (rootActivity == null)
         {
             throw new InvalidOperationException("Failed to create root activity for eval");
         }
 
-        // Set attributes on root span
-        rootActivity.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
-        rootActivity.SetTag("braintrust.span_attributes", ToJson(new { type = "eval" }));
-        rootActivity.SetTag("braintrust.input_json", ToJson(new { input = datasetCase.Input }));
-        rootActivity.SetTag("braintrust.expected", ToJson(datasetCase.Expected));
-
         try
         {
+            rootActivity.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
+            rootActivity.SetTag("braintrust.span_attributes", ToJson(new { type = "eval" }));
+            rootActivity.SetTag("braintrust.input_json", ToJson(new { input = datasetCase.Input }));
+            rootActivity.SetTag("braintrust.expected", ToJson(datasetCase.Expected));
+
             using var experimentScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
 
             // Run task

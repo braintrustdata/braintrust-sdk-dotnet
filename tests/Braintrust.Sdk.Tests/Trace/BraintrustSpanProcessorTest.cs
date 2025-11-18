@@ -131,26 +131,4 @@ public class BraintrustSpanProcessorTest : IDisposable
             Assert.Equal("project_id:existing", parent);
         }
     }
-
-    [Fact]
-    public void OnStart_NoParent_WhenNoConfigOrContext()
-    {
-        var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_DEFAULT_PROJECT_ID", "",
-            "BRAINTRUST_DEFAULT_PROJECT_NAME", "",
-            "BRAINTRUST_DEFAULT_EXPERIMENT_ID", "",
-            "BRAINTRUST_DEFAULT_EXPERIMENT_NAME", ""
-        );
-        var processor = new BraintrustSpanProcessor(config);
-
-        using (var activity = _activitySource.StartActivity("test-span"))
-        {
-            Assert.NotNull(activity);
-            processor.OnStart(activity);
-
-            var parent = activity.GetTagItem(BraintrustSpanProcessor.ParentAttributeKey);
-            Assert.Null(parent);
-        }
-    }
 }

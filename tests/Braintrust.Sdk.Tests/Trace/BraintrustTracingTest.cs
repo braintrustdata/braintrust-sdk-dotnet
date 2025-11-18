@@ -16,7 +16,7 @@ public class BraintrustTracingTest
             "BRAINTRUST_API_URL", "https://test-api.example.com"
         );
 
-        using var tracerProvider = BraintrustTracing.Of(config, registerGlobal: false);
+        using var tracerProvider = BraintrustTracing.CreateTracerProvider(config);
 
         Assert.NotNull(tracerProvider);
     }
@@ -28,22 +28,5 @@ public class BraintrustTracingTest
 
         Assert.NotNull(activitySource);
         Assert.Equal("braintrust-dotnet", activitySource.Name);
-    }
-
-    [Fact]
-    public void Quickstart_CreatesTracerProvider()
-    {
-        // Set required environment variables
-        Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", "test-key");
-
-        try
-        {
-            using var tracerProvider = BraintrustTracing.Quickstart();
-            Assert.NotNull(tracerProvider);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", null);
-        }
     }
 }
