@@ -9,12 +9,6 @@ namespace Braintrust.Sdk.Examples.OpenAIInstrumentation;
 
 /// <summary>
 /// Basic example demonstrating OpenAI instrumentation with Braintrust.
-///
-/// This example shows how to:
-/// 1. Set up Braintrust and OpenTelemetry
-/// 2. Wrap an OpenAI client with instrumentation
-/// 3. Use the instrumented client normally
-/// 4. View the results in Braintrust
 /// </summary>
 class Program
 {
@@ -28,26 +22,15 @@ class Program
             return;
         }
 
-        // Step 1: Initialize Braintrust and create OpenTelemetry provider
         var braintrust = Braintrust.Get();
         var activitySource = braintrust.GetActivitySource();
-
-        // Step 2: Create an instrumented OpenAI client
         var instrumentedClient = BraintrustOpenAI.WrapOpenAI(activitySource, openAIApiKey);
 
-        // Step 3: Create a root span for the entire example
         using (var rootActivity = activitySource.StartActivity("openai-dotnet-instrumentation-example"))
         {
             if (rootActivity != null)
             {
-                // Step 4: Use the instrumented client normally
                 await ChatCompletionsExample(instrumentedClient);
-
-                // TODO: Add more examples when instrumentation is fully implemented
-                // await ChatCompletionsStreamingExample(instrumentedClient);
-                // await EmbeddingsExample(instrumentedClient);
-
-                // Step 5: Generate link to view results in Braintrust
                 var url = braintrust.ProjectUri()
                     + $"/logs?r={rootActivity.TraceId}&s={rootActivity.SpanId}";
                 Console.WriteLine($"\n\n  Example complete! View your data in Braintrust: {url}\n");
@@ -59,17 +42,14 @@ class Program
     {
         Console.WriteLine("\n~~~ CHAT COMPLETIONS EXAMPLE\n");
 
-        // Get the chat client
         var chatClient = openAIClient.GetChatClient("gpt-4o-mini");
 
-        // Create a chat completion request
         var messages = new ChatMessage[]
         {
             new SystemChatMessage("You are a helpful assistant"),
             new UserChatMessage("What is the capital of France?")
         };
 
-        // Make the request - telemetry will be captured automatically
         var response = await chatClient.CompleteChatAsync(messages);
 
         Console.WriteLine($"Response: {response.Value.Content[0].Text}");
@@ -97,26 +77,4 @@ class Program
             Console.WriteLine($"Vision Response: {multimodalResponse.Value.Content[0].Text}");
         }
     }
-
-    // TODO: Add streaming example when instrumentation is fully implemented
-    // private static async Task ChatCompletionsStreamingExample(OpenAIClient openAIClient)
-    // {
-    //     Console.WriteLine("\n~~~ STREAMING RESPONSE:\n");
-    //
-    //     var chatClient = openAIClient.GetChatClient("gpt-4o-mini");
-    //     var messages = new ChatMessage[]
-    //     {
-    //         new SystemChatMessage("You are a helpful assistant"),
-    //         new UserChatMessage("What is the capital of France?")
-    //     };
-    //
-    //     await foreach (var update in chatClient.CompleteChatStreamingAsync(messages))
-    //     {
-    //         foreach (var contentPart in update.ContentUpdate)
-    //         {
-    //             Console.Write(contentPart.Text);
-    //         }
-    //     }
-    //     Console.WriteLine("\n");
-    // }
 }

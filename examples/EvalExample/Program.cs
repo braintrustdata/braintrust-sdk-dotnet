@@ -19,7 +19,6 @@ class Program
             return;
         }
 
-        // Initialize
         var braintrust = Braintrust.Get();
         var activitySource = braintrust.GetActivitySource();
         OpenAIClient openAIClient = BraintrustOpenAI.WrapOpenAI(activitySource, openAIApiKey);
