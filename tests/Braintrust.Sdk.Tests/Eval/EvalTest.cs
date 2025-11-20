@@ -59,8 +59,8 @@ public class EvalTest : IDisposable
             .Cases(cases)
             .TaskFunction(food => "fruit")
             .Scorers(
-                Scorer<string, string>.Of("fruit_scorer", result => result == "fruit" ? 1.0 : 0.0),
-                Scorer<string, string>.Of("vegetable_scorer", result => result == "vegetable" ? 1.0 : 0.0)
+                Scorer<string, string>.Of("fruit_scorer", (expected, actual) => expected == "fruit" && actual == "fruit" ? 1.0 : 0.0),
+                Scorer<string, string>.Of("vegetable_scorer", (expected, actual) => expected == "vegetable" && actual == "vegetable" ? 1.0 : 0.0)
             )
             .Build();
 
@@ -101,7 +101,7 @@ public class EvalTest : IDisposable
                 .Config(config)
                 .ApiClient(mockClient)
                 .TaskFunction(x => x)
-                .Scorers(Scorer<string, string>.Of("test", _ => 1.0))
+                .Scorers(Scorer<string, string>.Of("test", (_, _) => 1.0))
                 .Build());
     }
 
@@ -117,7 +117,7 @@ public class EvalTest : IDisposable
                 .Config(config)
                 .ApiClient(mockClient)
                 .Cases(DatasetCase<string, string>.Of("input", "expected"))
-                .Scorers(Scorer<string, string>.Of("test", _ => 1.0))
+                .Scorers(Scorer<string, string>.Of("test", (_, _) => 1.0))
                 .Build());
     }
 
@@ -135,7 +135,7 @@ public class EvalTest : IDisposable
     [Fact]
     public void ScorerCreatesValidScore()
     {
-        var scorer = Scorer<string, string>.Of("test_scorer", output => output == "expected" ? 1.0 : 0.0);
+        var scorer = Scorer<string, string>.Of("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
         var taskResult = new TaskResult<string, string>(
             "expected",
             DatasetCase<string, string>.Of("input", "expected")
