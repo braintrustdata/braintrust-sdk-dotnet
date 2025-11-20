@@ -26,9 +26,9 @@ public interface Scorer<TInput, TOutput>
     /// Create a scorer from a function that takes the output and returns a score.
     /// </summary>
     /// <param name="scorerName">Name of the scorer</param>
-    /// <param name="scorerFn">Function that takes the output and returns a score between 0.0 and 1.0</param>
+    /// <param name="scorerFn">Function that takes (expectedValue, actualValue) and returns a score between 0.0 and 1.0</param>
     /// <returns>A scorer instance</returns>
-    public static Scorer<TInput, TOutput> Of(string scorerName, Func<TOutput, double> scorerFn)
+    public static Scorer<TInput, TOutput> Of(string scorerName, Func<TOutput, TOutput, double> scorerFn)
     {
         return new FunctionScorer<TInput, TOutput>(scorerName, scorerFn);
     }
@@ -42,9 +42,9 @@ internal class FunctionScorer<TInput, TOutput> : Scorer<TInput, TOutput>
     where TOutput : notnull
 {
     private readonly string _name;
-    private readonly Func<TOutput, double> _scorerFn;
+    private readonly Func<TOutput, TOutput, double> _scorerFn;
 
-    public FunctionScorer(string name, Func<TOutput, double> scorerFn)
+    public FunctionScorer(string name, Func<TOutput, TOutput, double> scorerFn)
     {
         _name = name;
         _scorerFn = scorerFn;
@@ -54,6 +54,6 @@ internal class FunctionScorer<TInput, TOutput> : Scorer<TInput, TOutput>
 
     public List<Score> Score(TaskResult<TInput, TOutput> taskResult)
     {
-        return new List<Score> { new Score(_name, _scorerFn(taskResult.Result)) };
+        return new List<Score> { new Score(_name, _scorerFn(taskResult.DatasetCase.Expected, taskResult.Result)) };
     }
 }
