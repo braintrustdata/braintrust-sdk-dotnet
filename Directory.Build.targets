@@ -1,0 +1,252 @@
+<Project>
+  <!-- Generate SDK version from git state -->
+
+  <PropertyGroup>
+    <GeneratedVersionFile>$(IntermediateOutputPath)BraintrustVersion.txt</GeneratedVersionFile>
+  </PropertyGroup>
+
+  <!-- Target to compute version from git -->
+  <Target Name="ComputeBraintrustVersion" BeforeTargets="GetAssemblyVersion;GenerateNuspec;BeforeCompile;PrepareResourceNames">
+    <!-- Check if workspace is clean -->
+    <Exec Command="git status --porcelain" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitStatus" />
+      <Output TaskParameter="ExitCode" PropertyName="GitStatusExitCode" />
+    </Exec>
+
+    <!-- Get current commit SHA (short version) -->
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitSha" />
+      <Output TaskParameter="ExitCode" PropertyName="GitShaExitCode" />
+    </Exec>
+
+    <!-- Check if we're currently on a tag -->
+    <Exec Command="git describe --exact-match --tags HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="CurrentTag" />
+      <Output TaskParameter="ExitCode" PropertyName="CurrentTagExitCode" />
+    </Exec>
+
+    <!-- Get most recent tag if not on a tag -->
+    <Exec Command="git describe --tags --abbrev=0" ConsoleToMSBuild="true" IgnoreExitCode="true" Condition="'$(CurrentTagExitCode)' != '0'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="MostRecentTag" />
+      <Output TaskParameter="ExitCode" PropertyName="MostRecentTagExitCode" />
+    </Exec>
+
+    <!-- Compute the version -->
+    <PropertyGroup>
+      <!-- Check if workspace is dirty -->
+      <IsDirty Condition="'$(GitStatus)' != ''">true</IsDirty>
+      <IsDirty Condition="'$(GitStatus)' == ''">false</IsDirty>
+
+      <!-- Strip 'v' prefix from tags -->
+      <CleanCurrentTag Condition="'$(CurrentTagExitCode)' == '0' and $(CurrentTag.StartsWith('v'))">$(CurrentTag.Substring(1))</CleanCurrentTag>
+      <CleanCurrentTag Condition="'$(CurrentTagExitCode)' == '0' and !$(CurrentTag.StartsWith('v'))">$(CurrentTag)</CleanCurrentTag>
+
+      <CleanMostRecentTag Condition="'$(MostRecentTagExitCode)' == '0' and $(MostRecentTag.StartsWith('v'))">$(MostRecentTag.Substring(1))</CleanMostRecentTag>
+      <CleanMostRecentTag Condition="'$(MostRecentTagExitCode)' == '0' and !$(MostRecentTag.StartsWith('v'))">$(MostRecentTag)</CleanMostRecentTag>
+
+      <!-- Build version string -->
+      <!-- If on a tag, use the tag -->
+      <BraintrustSdkVersion Condition="'$(CurrentTagExitCode)' == '0'">$(CleanCurrentTag)</BraintrustSdkVersion>
+      <!-- If not on a tag but have a recent tag, use tag-sha (already semver compatible) -->
+      <BraintrustSdkVersion Condition="'$(CurrentTagExitCode)' != '0' and '$(MostRecentTagExitCode)' == '0'">$(CleanMostRecentTag)-$(GitSha)</BraintrustSdkVersion>
+      <!-- If no tags at all, use 0.0.0-dev-sha format for NuGet compatibility -->
+      <BraintrustSdkVersion Condition="'$(CurrentTagExitCode)' != '0' and '$(MostRecentTagExitCode)' != '0'">0.0.0-dev-$(GitSha)</BraintrustSdkVersion>
+      <!-- Append .dirty if workspace is not clean (use dot for prerelease component) -->
+      <BraintrustSdkVersion Condition="'$(IsDirty)' == 'true'">$(BraintrustSdkVersion).dirty</BraintrustSdkVersion>
+
+      <!-- Fallback to "0.0.0-unknown" if git is not available -->
+      <BraintrustSdkVersion Condition="'$(GitShaExitCode)' != '0'">0.0.0-unknown</BraintrustSdkVersion>
+    </PropertyGroup>
+
+    <!-- Create intermediate directory if it doesn't exist -->
+    <MakeDir Directories="$(IntermediateOutputPath)" Condition="!Exists('$(IntermediateOutputPath)')" />
+
+    <!-- Write version to file -->
+    <WriteLinesToFile File="$(GeneratedVersionFile)" Lines="$(BraintrustSdkVersion)" Overwrite="true" />
+
+    <!-- Add the generated version file as an embedded resource dynamically -->
+    <ItemGroup>
+      <EmbeddedResource Include="$(GeneratedVersionFile)">
+        <LogicalName>BraintrustVersion.txt</LogicalName>
+        <Visible>false</Visible>
+      </EmbeddedResource>
+    </ItemGroup>
+
+    <Message Text="Generated Braintrust SDK version: $(BraintrustSdkVersion)" Importance="high" />
+
+    <!-- Set the Version property for NuGet packaging -->
+    <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk'">
+      <Version>$(BraintrustSdkVersion)</Version>
+      <PackageVersion>$(BraintrustSdkVersion)</PackageVersion>
+    </PropertyGroup>
+  </Target>
+
+  <!-- Ensure version is generated before embedding resources -->
+  <PropertyGroup>
+    <PrepareResourceNamesDependsOn>
+      ComputeBraintrustVersion;
+      $(PrepareResourceNamesDependsOn)
+    </PrepareResourceNamesDependsOn>
+    <CoreCompileDependsOn>
+      ComputeBraintrustVersion;
+      $(CoreCompileDependsOn)
+    </CoreCompileDependsOn>
+  </PropertyGroup>
+
+  <!-- Target to verify the version in the built assembly matches the expected git version -->
+  <Target Name="VerifyAssemblyVersion" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk'">
+    <Message Text="Verifying SDK version in built assembly..." Importance="high" />
+
+    <!-- Get the expected version (recompute it to ensure consistency) -->
+    <Exec Command="git status --porcelain" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="VerifyGitStatus" />
+    </Exec>
+
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="VerifyGitSha" />
+    </Exec>
+
+    <Exec Command="git describe --exact-match --tags HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="VerifyCurrentTag" />
+      <Output TaskParameter="ExitCode" PropertyName="VerifyCurrentTagExitCode" />
+    </Exec>
+
+    <Exec Command="git describe --tags --abbrev=0" ConsoleToMSBuild="true" IgnoreExitCode="true" Condition="'$(VerifyCurrentTagExitCode)' != '0'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="VerifyMostRecentTag" />
+      <Output TaskParameter="ExitCode" PropertyName="VerifyMostRecentTagExitCode" />
+    </Exec>
+
+    <!-- Recompute version using same logic -->
+    <PropertyGroup>
+      <VerifyIsDirty Condition="'$(VerifyGitStatus)' != ''">true</VerifyIsDirty>
+      <VerifyIsDirty Condition="'$(VerifyGitStatus)' == ''">false</VerifyIsDirty>
+
+      <VerifyCleanCurrentTag Condition="'$(VerifyCurrentTagExitCode)' == '0' and $(VerifyCurrentTag.StartsWith('v'))">$(VerifyCurrentTag.Substring(1))</VerifyCleanCurrentTag>
+      <VerifyCleanCurrentTag Condition="'$(VerifyCurrentTagExitCode)' == '0' and !$(VerifyCurrentTag.StartsWith('v'))">$(VerifyCurrentTag)</VerifyCleanCurrentTag>
+
+      <VerifyCleanMostRecentTag Condition="'$(VerifyMostRecentTagExitCode)' == '0' and $(VerifyMostRecentTag.StartsWith('v'))">$(VerifyMostRecentTag.Substring(1))</VerifyCleanMostRecentTag>
+      <VerifyCleanMostRecentTag Condition="'$(VerifyMostRecentTagExitCode)' == '0' and !$(VerifyMostRecentTag.StartsWith('v'))">$(VerifyMostRecentTag)</VerifyCleanMostRecentTag>
+
+      <ExpectedSdkVersion Condition="'$(VerifyCurrentTagExitCode)' == '0'">$(VerifyCleanCurrentTag)</ExpectedSdkVersion>
+      <ExpectedSdkVersion Condition="'$(VerifyCurrentTagExitCode)' != '0' and '$(VerifyMostRecentTagExitCode)' == '0'">$(VerifyCleanMostRecentTag)-$(VerifyGitSha)</ExpectedSdkVersion>
+      <ExpectedSdkVersion Condition="'$(VerifyCurrentTagExitCode)' != '0' and '$(VerifyMostRecentTagExitCode)' != '0'">0.0.0-dev-$(VerifyGitSha)</ExpectedSdkVersion>
+      <ExpectedSdkVersion Condition="'$(VerifyIsDirty)' == 'true'">$(ExpectedSdkVersion).dirty</ExpectedSdkVersion>
+    </PropertyGroup>
+
+    <!-- Create a small verification script -->
+    <PropertyGroup>
+      <VersionVerifierScript>
+using System;
+using System.Reflection;
+using System.IO;
+
+var assemblyPath = "$(TargetPath)";
+var assembly = Assembly.LoadFrom(assemblyPath);
+
+// Access the internal SdkVersion class via reflection
+var sdkVersionType = assembly.GetType("Braintrust.Sdk.SdkVersion");
+if (sdkVersionType == null) {
+    Console.Error.WriteLine("ERROR: SdkVersion type not found");
+    Environment.Exit(1);
+}
+
+var versionProperty = sdkVersionType.GetProperty("Version", BindingFlags.Public | BindingFlags.Static);
+if (versionProperty == null) {
+    Console.Error.WriteLine("ERROR: Version property not found");
+    Environment.Exit(1);
+}
+
+var version = versionProperty.GetValue(null) as string;
+if (string.IsNullOrEmpty(version)) {
+    Console.Error.WriteLine("ERROR: Version is null or empty");
+    Environment.Exit(1);
+}
+
+Console.WriteLine(version);
+      </VersionVerifierScript>
+      <VersionVerifierScriptFile>$(IntermediateOutputPath)VerifyVersion.csx</VersionVerifierScriptFile>
+    </PropertyGroup>
+
+    <!-- Write the verification script to a file -->
+    <WriteLinesToFile File="$(VersionVerifierScriptFile)" Lines="$(VersionVerifierScript)" Overwrite="true" />
+
+    <!-- Execute the verification script using dotnet-script or inline -->
+    <!-- For simplicity, we'll use a PowerShell/bash script to run dotnet exec with the script -->
+    <Exec Command="dotnet exec $(TargetPath) || dotnet exec --runtimeconfig $(TargetDir)$(TargetName).runtimeconfig.json $(TargetPath)"
+          IgnoreExitCode="true"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="DotnetExecOutput" />
+      <Output TaskParameter="ExitCode" PropertyName="DotnetExecExitCode" />
+    </Exec>
+
+    <!-- If dotnet exec doesn't work (expected for libraries), use a custom approach -->
+    <!-- We'll compile and run the verification script -->
+    <Exec Command="dotnet exec --runtimeconfig $(TargetDir)$(TargetName).runtimeconfig.json --depsfile $(TargetDir)$(TargetName).deps.json $(TargetPath)"
+          IgnoreExitCode="true"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true"
+          Condition="'$(DotnetExecExitCode)' != '0'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="FallbackExecOutput" />
+      <Output TaskParameter="ExitCode" PropertyName="FallbackExecExitCode" />
+    </Exec>
+
+    <!-- Since we can't directly exec a library, we'll use a different approach:
+         Create a temporary console app that loads the assembly and prints the version -->
+    <PropertyGroup>
+      <TempVerifierDir>$(IntermediateOutputPath)verifier</TempVerifierDir>
+      <TempVerifierCode>$(TempVerifierDir)/Program.cs</TempVerifierCode>
+      <TempVerifierProject>$(TempVerifierDir)/verifier.csproj</TempVerifierProject>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(TempVerifierDir)" />
+
+    <!-- Create temporary verifier program -->
+    <WriteLinesToFile File="$(TempVerifierCode)" Overwrite="true" Lines="
+using System%3B
+using System.Reflection%3B
+
+var assemblyPath = @&quot;$(TargetPath)&quot;%3B
+var assembly = Assembly.LoadFrom(assemblyPath)%3B
+var sdkVersionType = assembly.GetType(&quot;Braintrust.Sdk.SdkVersion&quot;)%3B
+var versionProperty = sdkVersionType.GetProperty(&quot;Version&quot;, BindingFlags.Public | BindingFlags.Static)%3B
+var version = versionProperty.GetValue(null) as string%3B
+Console.WriteLine(version)%3B
+" />
+
+    <!-- Create temporary project file -->
+    <WriteLinesToFile File="$(TempVerifierProject)" Overwrite="true" Lines="
+&lt;Project Sdk=&quot;Microsoft.NET.Sdk&quot;&gt;
+  &lt;PropertyGroup&gt;
+    &lt;OutputType&gt;Exe&lt;/OutputType&gt;
+    &lt;TargetFramework&gt;net8.0&lt;/TargetFramework&gt;
+    &lt;EnableDefaultItems&gt;false&lt;/EnableDefaultItems&gt;
+  &lt;/PropertyGroup&gt;
+  &lt;ItemGroup&gt;
+    &lt;Compile Include=&quot;Program.cs&quot; /&gt;
+  &lt;/ItemGroup&gt;
+&lt;/Project&gt;
+" />
+
+    <!-- Build and run the verifier -->
+    <Exec Command="dotnet run --project &quot;$(TempVerifierProject)&quot;" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="ActualSdkVersion" />
+    </Exec>
+
+    <!-- Trim whitespace from actual version -->
+    <PropertyGroup>
+      <ActualSdkVersion>$([System.String]::Copy('$(ActualSdkVersion)').Trim())</ActualSdkVersion>
+    </PropertyGroup>
+
+    <!-- Compare versions -->
+    <Message Text="Expected version: $(ExpectedSdkVersion)" Importance="high" />
+    <Message Text="Actual version:   $(ActualSdkVersion)" Importance="high" />
+
+    <Error Text="Version mismatch! Assembly contains version '$(ActualSdkVersion)' but expected '$(ExpectedSdkVersion)' from git state."
+           Condition="'$(ActualSdkVersion)' != '$(ExpectedSdkVersion)'" />
+
+    <Message Text="✓ Version validation passed: $(ActualSdkVersion)" Importance="high"
+             Condition="'$(ActualSdkVersion)' == '$(ExpectedSdkVersion)'" />
+  </Target>
+
+</Project>

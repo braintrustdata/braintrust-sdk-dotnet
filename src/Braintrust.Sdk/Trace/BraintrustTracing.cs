@@ -20,8 +20,7 @@ public static class BraintrustTracing
     private const string OtelServiceName = "braintrust-app";
     private const string InstrumentationName = "braintrust-dotnet";
 
-    private static readonly string InstrumentationVersion =
-        typeof(BraintrustTracing).Assembly.GetName().Version?.ToString() ?? "0.0.1";
+    private static readonly string InstrumentationVersion = SdkVersion.Version;
 
     private static readonly Lazy<ActivitySource> _activitySource = new Lazy<ActivitySource>(
         () => new ActivitySource(InstrumentationName, InstrumentationVersion));
