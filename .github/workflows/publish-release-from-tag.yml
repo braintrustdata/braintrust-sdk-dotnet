@@ -1,0 +1,169 @@
+# This workflow is triggered when a new tag is pushed to main.
+# It can also be run manually to re-publish a release in case it failed for some reason.
+name: Publish Release From Tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write  # Required for OIDC trusted publishing
+
+jobs:
+  validate-and-publish:
+    name: Validate Tag and Publish Release
+    # we want to run ubuntu-latest but we'll pin to a specific version so workflow is reproducable
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine tag
+        id: determine-tag
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+          else
+            TAG_NAME="${{ inputs.tag }}"
+          fi
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Using tag: $TAG_NAME"
+
+      - name: Validate tag format
+        run: |
+          TAG="${{ steps.determine-tag.outputs.tag }}"
+
+          # Check if tag starts with 'v'
+          if [[ ! "$TAG" =~ ^v ]]; then
+            echo "Error: Tag '$TAG' must start with 'v'"
+            exit 1
+          fi
+
+          # Extract version without 'v' prefix
+          VERSION="${TAG#v}"
+
+          # Check if version is valid semver (x.y.z or x.y.z-prerelease)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "Error: Tag '$TAG' is not valid semver format (vx.y.z or vx.y.z-prerelease)"
+            exit 1
+          fi
+
+          echo "Tag '$TAG' is valid"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        id: validate-tag
+
+      - name: Verify tag exists
+        run: |
+          TAG="${{ steps.determine-tag.outputs.tag }}"
+          if ! git tag -l | grep -q "^$TAG$"; then
+            echo "Error: Tag '$TAG' does not exist"
+            exit 1
+          fi
+          echo "Tag '$TAG' exists"
+
+      - name: Checkout tag
+        run: |
+          git checkout ${{ steps.determine-tag.outputs.tag }}
+
+      - name: Set up .NET 8.0
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Check code formatting
+        run: dotnet format --verify-no-changes
+
+      - name: Run CI (build and test)
+        run: |
+          dotnet build --no-restore --configuration Release
+          dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: Pack NuGet package
+        run: |
+          VERSION="${{ steps.validate-tag.outputs.version }}"
+          dotnet pack src/Braintrust.Sdk/Braintrust.Sdk.csproj \
+            --configuration Release \
+            --no-build \
+            -p:PackageVersion="$VERSION" \
+            -p:Version="$VERSION" \
+            --output ./artifacts
+
+      - name: Find built artifacts
+        id: find-artifacts
+        run: |
+          VERSION="${{ steps.validate-tag.outputs.version }}"
+
+          # Find the built NuGet package
+          NUPKG=$(find ./artifacts -name "Braintrust.Sdk.${VERSION}.nupkg" | head -1)
+          SNUPKG=$(find ./artifacts -name "Braintrust.Sdk.${VERSION}.snupkg" | head -1)
+
+          echo "nupkg=$NUPKG" >> $GITHUB_OUTPUT
+          if [[ -n "$SNUPKG" ]]; then
+            echo "snupkg=$SNUPKG" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Found artifacts:"
+          echo "  NuGet package: $NUPKG"
+          if [[ -n "$SNUPKG" ]]; then
+            echo "  Symbols package: $SNUPKG"
+          fi
+
+      - name: Create GitHub Release
+        run: |
+          TAG="${{ steps.determine-tag.outputs.tag }}"
+
+          # Create the release
+          gh release create "$TAG" \
+            --generate-notes \
+            --title "Release $TAG"
+
+          # Upload artifacts if they exist
+          if [[ -n "${{ steps.find-artifacts.outputs.nupkg }}" && -f "${{ steps.find-artifacts.outputs.nupkg }}" ]]; then
+            gh release upload "$TAG" "${{ steps.find-artifacts.outputs.nupkg }}"
+          fi
+
+          if [[ -n "${{ steps.find-artifacts.outputs.snupkg }}" && -f "${{ steps.find-artifacts.outputs.snupkg }}" ]]; then
+            gh release upload "$TAG" "${{ steps.find-artifacts.outputs.snupkg }}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: NuGet login (OIDC trusted publishing)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish to NuGet.org
+        run: |
+          NUPKG="${{ steps.find-artifacts.outputs.nupkg }}"
+
+          if [[ -z "$NUPKG" || ! -f "$NUPKG" ]]; then
+            echo "Error: NuGet package not found"
+            exit 1
+          fi
+
+          echo "Publishing $NUPKG to NuGet.org..."
+          dotnet nuget push "$NUPKG" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Wait for NuGet.org indexing
+        run: |
+          VERSION="${{ steps.validate-tag.outputs.version }}"
+          echo "Package published! It may take a few minutes to appear on NuGet.org"
+          echo "Check status at: https://www.nuget.org/packages/Braintrust.Sdk/$VERSION"
