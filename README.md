@@ -1,6 +1,7 @@
 # Braintrust C# Tracing & Eval SDK
 
 [![CI](https://github.com/braintrustdata/braintrust-sdk-java/actions/workflows/ci.yml/badge.svg)](https://github.com/braintrustdata/braintrust-sdk-dotnet/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/Braintrust.Sdk.svg)](https://www.nuget.org/packages/Braintrust.Sdk)
 
 ## Overview
 
