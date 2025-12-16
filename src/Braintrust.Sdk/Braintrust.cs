@@ -21,8 +21,7 @@ namespace Braintrust.Sdk;
 /// </summary>
 public sealed class Braintrust
 {
-    private static readonly string SdkVersion =
-        typeof(Braintrust).Assembly.GetName().Version?.ToString() ?? "unknown";
+    private static readonly string SdkVersionString = SdkVersion.Version;
     private static volatile Braintrust? _instance;
     private static readonly object _lock = new object();
 
