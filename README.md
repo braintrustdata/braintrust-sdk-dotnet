@@ -13,6 +13,24 @@ This library provides tools for **evaluating** and **tracing** AI applications i
 
 This SDK is currently in BETA status and APIs may change.
 
+## Installation
+
+You can install the Braintrust SDK via [NuGet](https://www.nuget.org/packages/Braintrust.Sdk):
+
+### Using the .NET CLI
+
+```bash
+dotnet add package Braintrust.Sdk
+```
+
+### Or add to your .csproj file
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Braintrust.Sdk" Version="version goes here" />
+</ItemGroup>
+```
+
 ## Running Examples
 
 ### Setup
