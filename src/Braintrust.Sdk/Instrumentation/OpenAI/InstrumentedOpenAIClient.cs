@@ -147,16 +147,20 @@ internal sealed class InstrumentedChatClient : ChatClient
     {
         // Start a span for the chat completion
         var activity = _activitySource.StartActivity("Chat Completion", ActivityKind.Client);
+        var startTime = DateTime.UtcNow;
 
         try
         {
             // Call the underlying client - this will trigger HTTP call and capture JSON
             var result = _client.CompleteChat(messages, options, cancellationToken);
 
+            // Calculate time to first token
+            var timeToFirstToken = (DateTime.UtcNow - startTime).TotalSeconds;
+
             // Get the captured HTTP JSON from Activity baggage
             if (activity != null && _captureMessageContent)
             {
-                TagActivity(activity);
+                TagActivity(activity, timeToFirstToken);
             }
 
             return result;
@@ -186,16 +190,20 @@ internal sealed class InstrumentedChatClient : ChatClient
     {
         // Start a span for the chat completion
         var activity = _activitySource.StartActivity("Chat Completion", ActivityKind.Client);
+        var startTime = DateTime.UtcNow;
 
         try
         {
             // Call the underlying client - this will trigger HTTP call and capture JSON
             var result = await _client.CompleteChatAsync(messages, options, cancellationToken).ConfigureAwait(false);
 
+            // Calculate time to first token
+            var timeToFirstToken = (DateTime.UtcNow - startTime).TotalSeconds;
+
             // Get the captured HTTP JSON from Activity baggage
             if (activity != null && _captureMessageContent)
             {
-                TagActivity(activity);
+                TagActivity(activity, timeToFirstToken);
             }
 
             return result;
@@ -219,7 +227,7 @@ internal sealed class InstrumentedChatClient : ChatClient
     }
 
     // TODO: Override other methods as needed (CompleteChatStreaming, etc.)
-    private void TagActivity(Activity activity)
+    private void TagActivity(Activity activity, double? timeToFirstToken = null)
     {
         activity.SetTag("provider", "openai");
         {
@@ -238,6 +246,29 @@ internal sealed class InstrumentedChatClient : ChatClient
                 var responseJson = JsonNode.Parse(responseRaw);
                 activity.SetTag("gen_ai.response.model", responseJson?["model"]?.ToString());
                 activity.SetTag("braintrust.output_json", responseJson?["choices"]?.ToString());
+
+                // Extract token usage metrics
+                var usage = responseJson?["usage"];
+                if (usage != null)
+                {
+                    var promptTokens = usage["prompt_tokens"]?.GetValue<int?>();
+                    var completionTokens = usage["completion_tokens"]?.GetValue<int?>();
+                    var totalTokens = usage["total_tokens"]?.GetValue<int?>();
+
+                    if (promptTokens.HasValue)
+                        activity.SetTag("braintrust.metrics.prompt_tokens", promptTokens.Value);
+                    if (completionTokens.HasValue)
+                        activity.SetTag("braintrust.metrics.completion_tokens", completionTokens.Value);
+                    if (totalTokens.HasValue)
+                        activity.SetTag("braintrust.metrics.tokens", totalTokens.Value);
+                }
+
+                // Set time_to_first_token metric
+                // For non-streaming responses, this is the total response time
+                if (timeToFirstToken.HasValue && timeToFirstToken.Value > 0)
+                {
+                    activity.SetTag("braintrust.metrics.time_to_first_token", timeToFirstToken.Value);
+                }
             }
         }
     }
