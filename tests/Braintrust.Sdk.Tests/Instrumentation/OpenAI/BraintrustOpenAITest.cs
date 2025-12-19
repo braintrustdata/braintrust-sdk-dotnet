@@ -171,6 +171,26 @@ public class BraintrustOpenAITest : IDisposable
         var outputNode = JsonNode.Parse(outputJson);
         Assert.NotNull(outputNode);
         Assert.Contains("The capital of France is Paris", outputJson);
+
+        // Verify token metrics were captured
+        var promptTokens = span.GetTagItem("braintrust.metrics.prompt_tokens");
+        var completionTokens = span.GetTagItem("braintrust.metrics.completion_tokens");
+        var totalTokens = span.GetTagItem("braintrust.metrics.tokens");
+        var timeToFirstToken = span.GetTagItem("braintrust.metrics.time_to_first_token");
+
+        Assert.NotNull(promptTokens);
+        Assert.NotNull(completionTokens);
+        Assert.NotNull(totalTokens);
+        Assert.NotNull(timeToFirstToken);
+
+        // Verify token counts match the mock response
+        Assert.Equal(20, Convert.ToInt32(promptTokens));
+        Assert.Equal(10, Convert.ToInt32(completionTokens));
+        Assert.Equal(30, Convert.ToInt32(totalTokens));
+
+        // Verify time_to_first_token is a non-negative number
+        var ttft = Convert.ToDouble(timeToFirstToken);
+        Assert.True(ttft >= 0, "time_to_first_token should be greater than or equal to 0");
     }
 
     [Fact]
