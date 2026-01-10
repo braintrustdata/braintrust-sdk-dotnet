@@ -45,10 +45,10 @@ class Program
             .EvalBuilder<string, string>()
             .Name($"dotnet-eval-x-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")
             .Cases(
-                DatasetCase<string, string>.Of("strawberry", "fruit"),
-                DatasetCase<string, string>.Of("asparagus", "vegetable"),
-                DatasetCase<string, string>.Of("apple", "fruit"),
-                DatasetCase<string, string>.Of("banana", "fruit")
+                DatasetCase.Of("strawberry", "fruit"),
+                DatasetCase.Of("asparagus", "vegetable"),
+                DatasetCase.Of("apple", "fruit"),
+                DatasetCase.Of("banana", "fruit")
             )
             .TaskFunction(GetFoodType)
             .Scorers(

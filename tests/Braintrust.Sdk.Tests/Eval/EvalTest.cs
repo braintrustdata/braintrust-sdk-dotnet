@@ -41,10 +41,10 @@ public class EvalTest : IDisposable
         // Create a mock API client that doesn't make real API calls
         var mockClient = new MockBraintrustApiClient();
 
-        var cases = new[]
+        var cases = new DatasetCase<string, string>[]
         {
-            DatasetCase<string, string>.Of("strawberry", "fruit"),
-            DatasetCase<string, string>.Of("asparagus", "vegetable")
+            new("strawberry", "fruit"),
+            new("asparagus", "vegetable")
         };
 
         // Act
@@ -80,7 +80,7 @@ public class EvalTest : IDisposable
                 .Name("test-eval")
                 .Config(config)
                 .ApiClient(mockClient)
-                .Cases(DatasetCase<string, string>.Of("input", "expected"))
+                .Cases(DatasetCase.Of("input", "expected"))
                 .TaskFunction(x => x)
                 .BuildAsync());
     }
@@ -112,7 +112,7 @@ public class EvalTest : IDisposable
                 .Name("test-eval")
                 .Config(config)
                 .ApiClient(mockClient)
-                .Cases(DatasetCase<string, string>.Of("input", "expected"))
+                .Cases(DatasetCase.Of("input", "expected"))
                 .Scorers(IScorer<string, string>.Of("test", (_, _) => 1.0))
                 .BuildAsync());
     }
@@ -120,7 +120,7 @@ public class EvalTest : IDisposable
     [Fact]
     public void DatasetCaseOfCreatesWithEmptyTagsAndMetadata()
     {
-        var datasetCase = DatasetCase<string, string>.Of("input", "expected");
+        var datasetCase = DatasetCase.Of("input", "expected");
 
         Assert.Equal("input", datasetCase.Input);
         Assert.Equal("expected", datasetCase.Expected);
@@ -134,7 +134,7 @@ public class EvalTest : IDisposable
         var scorer = IScorer<string, string>.Of("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
         var taskResult = new TaskResult<string, string>(
             "expected",
-            DatasetCase<string, string>.Of("input", "expected")
+            DatasetCase.Of("input", "expected")
         );
 
         var scores = scorer.Score(taskResult);
@@ -148,8 +148,8 @@ public class EvalTest : IDisposable
     public void DatasetOfCreatesInMemoryDataset()
     {
         var dataset = IDataset<string, string>.Of(
-            DatasetCase<string, string>.Of("input1", "output1"),
-            DatasetCase<string, string>.Of("input2", "output2")
+            DatasetCase.Of("input1", "output1"),
+            DatasetCase.Of("input2", "output2")
         );
 
         Assert.NotNull(dataset);
