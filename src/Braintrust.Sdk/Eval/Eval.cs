@@ -220,19 +220,12 @@ public sealed class Eval<TInput, TOutput>
                 throw new InvalidOperationException("Must provide a task");
             }
 
-            OrganizationAndProjectInfo? orgAndProject;
-
-            if (_projectId == null)
-            {
-                orgAndProject = await _apiClient.GetProjectAndOrgInfo().ConfigureAwait(false)
-                                 ?? throw new InvalidOperationException("Unable to retrieve project and org info");
-            }
-            else
-            {
-                orgAndProject = await _apiClient.GetProjectAndOrgInfo(_projectId).ConfigureAwait(false)
-                                ?? throw new InvalidOperationException($"Invalid project id: {_projectId}");
-            }
-
+            OrganizationAndProjectInfo? orgAndProject =
+                _projectId == null
+                    ? await _apiClient.GetProjectAndOrgInfo().ConfigureAwait(false)
+                        ?? throw new InvalidOperationException("Unable to retrieve project and org info")
+                    : await _apiClient.GetProjectAndOrgInfo(_projectId).ConfigureAwait(false)
+                        ?? throw new InvalidOperationException($"Invalid project id: {_projectId}");
             return new Eval<TInput, TOutput>(this, orgAndProject);
         }
 
