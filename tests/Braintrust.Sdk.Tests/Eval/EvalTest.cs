@@ -1,10 +1,6 @@
-using System;
 using System.Diagnostics;
-using System.Linq;
-using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Eval;
-using Xunit;
 
 namespace Braintrust.Sdk.Tests.Eval;
 
@@ -33,7 +29,7 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
-    public void BasicEvalBuildsAndRuns()
+    public async Task BasicEvalBuildsAndRuns()
     {
         // Arrange
         var config = BraintrustConfig.Of(
@@ -52,7 +48,7 @@ public class EvalTest : IDisposable
         };
 
         // Act
-        var eval = Eval<string, string>.NewBuilder()
+        var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval")
             .Config(config)
             .ApiClient(mockClient)
@@ -62,9 +58,9 @@ public class EvalTest : IDisposable
                 Scorer<string, string>.Of("fruit_scorer", (expected, actual) => expected == "fruit" && actual == "fruit" ? 1.0 : 0.0),
                 Scorer<string, string>.Of("vegetable_scorer", (expected, actual) => expected == "vegetable" && actual == "vegetable" ? 1.0 : 0.0)
             )
-            .Build();
+            .BuildAsync();
 
-        var result = eval.Run();
+        var result = await eval.RunAsync();
 
         // Assert
         Assert.NotNull(result);
@@ -74,51 +70,51 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
-    public void EvalRequiresAtLeastOneScorer()
+    public async Task EvalRequiresAtLeastOneScorer()
     {
         var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "test-key");
         var mockClient = new MockBraintrustApiClient();
 
-        Assert.Throws<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Eval<string, string>.NewBuilder()
                 .Name("test-eval")
                 .Config(config)
                 .ApiClient(mockClient)
                 .Cases(DatasetCase<string, string>.Of("input", "expected"))
                 .TaskFunction(x => x)
-                .Build());
+                .BuildAsync());
     }
 
     [Fact]
-    public void EvalRequiresDataset()
+    public async Task EvalRequiresDataset()
     {
         var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "test-key");
         var mockClient = new MockBraintrustApiClient();
 
-        Assert.Throws<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Eval<string, string>.NewBuilder()
                 .Name("test-eval")
                 .Config(config)
                 .ApiClient(mockClient)
                 .TaskFunction(x => x)
                 .Scorers(Scorer<string, string>.Of("test", (_, _) => 1.0))
-                .Build());
+                .BuildAsync());
     }
 
     [Fact]
-    public void EvalRequiresTask()
+    public async Task EvalRequiresTask()
     {
         var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "test-key");
         var mockClient = new MockBraintrustApiClient();
 
-        Assert.Throws<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Eval<string, string>.NewBuilder()
                 .Name("test-eval")
                 .Config(config)
                 .ApiClient(mockClient)
                 .Cases(DatasetCase<string, string>.Of("input", "expected"))
                 .Scorers(Scorer<string, string>.Of("test", (_, _) => 1.0))
-                .Build());
+                .BuildAsync());
     }
 
     [Fact]
@@ -170,44 +166,5 @@ public class EvalTest : IDisposable
         Assert.NotNull(case2);
         Assert.Equal("input2", case2.Input);
         Assert.Null(case3);
-    }
-}
-
-/// <summary>
-/// Mock API client for testing that doesn't make real HTTP calls.
-/// </summary>
-internal class MockBraintrustApiClient : IBraintrustApiClient
-{
-    private readonly OrganizationInfo _orgInfo = new OrganizationInfo("test-org-id", "test-org");
-    private readonly Project _project = new Project("test-project-id", "test-project", "test-org-id", null, null);
-
-    public Project GetOrCreateProject(string projectName)
-    {
-        return _project;
-    }
-
-    public Project? GetProject(string projectId)
-    {
-        return _project;
-    }
-
-    public Experiment GetOrCreateExperiment(CreateExperimentRequest request)
-    {
-        return new Experiment("test-experiment-id", request.ProjectId, request.Name, request.Description, null, null);
-    }
-
-    public OrganizationAndProjectInfo? GetProjectAndOrgInfo()
-    {
-        return new OrganizationAndProjectInfo(_orgInfo, _project);
-    }
-
-    public OrganizationAndProjectInfo? GetProjectAndOrgInfo(string projectId)
-    {
-        return new OrganizationAndProjectInfo(_orgInfo, _project);
-    }
-
-    public OrganizationAndProjectInfo GetOrCreateProjectAndOrgInfo()
-    {
-        return new OrganizationAndProjectInfo(_orgInfo, _project);
     }
 }

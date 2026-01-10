@@ -1,12 +1,8 @@
-using System;
-using System.Threading;
-using Braintrust.Sdk;
-
 namespace Braintrust.Sdk.Examples.SimpleOpenTelemetry;
 
 class Program
 {
-    static void Main(string[] args)
+    static async Task Main(string[] args)
     {
         var braintrust = Braintrust.Get();
         var activitySource = braintrust.GetActivitySource();
@@ -17,7 +13,7 @@ class Program
             ArgumentNullException.ThrowIfNull(activity);
             Console.WriteLine("Performing simple operation...");
             activity.SetTag("some boolean attribute", true);
-            url = braintrust.ProjectUri() + $"/logs?r={activity.TraceId}&s={activity.SpanId}";
+            url = await braintrust.GetProjectUriAsync() + $"/logs?r={activity.TraceId}&s={activity.SpanId}";
         }
         Console.WriteLine($"\n\n  Example complete! View your data in Braintrust: {url}");
     }

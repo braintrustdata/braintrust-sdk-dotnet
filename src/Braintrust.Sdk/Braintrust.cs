@@ -1,5 +1,3 @@
-using System;
-using System.Threading;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 using Microsoft.Extensions.Logging;
@@ -100,16 +98,16 @@ public sealed class Braintrust
         ApiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
         if (autoManageOpenTelemetry)
         {
-            this._tracer = Trace.BraintrustTracing.CreateTracerProvider(this.Config);
+            _tracer = Trace.BraintrustTracing.CreateTracerProvider(this.Config);
         }
     }
 
     /// <summary>
     /// Get the URI to the configured Braintrust org and project.
     /// </summary>
-    public Uri ProjectUri()
+    public async Task<Uri> GetProjectUriAsync()
     {
-        var orgAndProject = ApiClient.GetOrCreateProjectAndOrgInfo();
+        var orgAndProject = await ApiClient.GetOrCreateProjectAndOrgInfo().ConfigureAwait(false);
         return new Uri($"{Config.AppUrl}/app/{orgAndProject.OrgInfo.Name}/p/{orgAndProject.Project.Name}");
     }
 
@@ -122,9 +120,9 @@ public sealed class Braintrust
     /// </summary>
     public void OpenTelemetryEnable(OpenTelemetry.Trace.TracerProviderBuilder tracerProviderBuilder, ILoggingBuilder loggingBuilder, MeterProviderBuilder meterProviderBuilder)
     {
-        if (this._tracer != null)
+        if (_tracer != null)
         {
-            throw new System.InvalidOperationException("cannot call enable for Braintrusts which autoManage Open Telemetry");
+            throw new InvalidOperationException("cannot call enable for Braintrusts which autoManage Open Telemetry");
         }
         Trace.BraintrustTracing.Enable(Config, tracerProviderBuilder, loggingBuilder, meterProviderBuilder);
     }

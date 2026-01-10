@@ -1,6 +1,3 @@
-using System;
-using System.Linq;
-using Braintrust.Sdk;
 using Braintrust.Sdk.Eval;
 using Braintrust.Sdk.Instrumentation.OpenAI;
 using OpenAI;
@@ -10,7 +7,7 @@ namespace Braintrust.Sdk.Examples.EvalExample;
 
 class Program
 {
-    static void Main(string[] args)
+    static async Task Main(string[] args)
     {
         var openAIApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         if (string.IsNullOrEmpty(openAIApiKey))
@@ -44,7 +41,7 @@ class Program
         }
 
         // Create and run the evaluation
-        var eval = braintrust
+        var eval = await braintrust
             .EvalBuilder<string, string>()
             .Name($"dotnet-eval-x-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")
             .Cases(
@@ -58,9 +55,9 @@ class Program
               Scorer<string, string>.Of("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0),
               Scorer<string, string>.Of("close_enough_match", (expected, actual) => expected.Trim().ToLowerInvariant() == actual.Trim().ToLowerInvariant() ? 1.0 : 0.0)
             )
-            .Build();
+            .BuildAsync();
 
-        var result = eval.Run();
+        var result = await eval.RunAsync();
         Console.WriteLine($"\n\n{result.CreateReportString()}");
     }
 }

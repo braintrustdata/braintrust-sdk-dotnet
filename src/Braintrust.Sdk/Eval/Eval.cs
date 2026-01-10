@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Text.Json;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
@@ -33,22 +30,12 @@ public sealed class Eval<TInput, TOutput>
     private readonly Task<TInput, TOutput> _task;
     private readonly IReadOnlyList<Scorer<TInput, TOutput>> _scorers;
 
-    private Eval(Builder builder)
+    private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject)
     {
         _experimentName = builder._experimentName;
         _config = builder._config ?? throw new ArgumentNullException(nameof(builder._config));
         _client = builder._apiClient ?? throw new ArgumentNullException(nameof(builder._apiClient));
-
-        if (builder._projectId == null)
-        {
-            _orgAndProject = _client.GetProjectAndOrgInfo()
-                ?? throw new InvalidOperationException("Unable to retrieve project and org info");
-        }
-        else
-        {
-            _orgAndProject = _client.GetProjectAndOrgInfo(builder._projectId)
-                ?? throw new InvalidOperationException($"Invalid project id: {builder._projectId}");
-        }
+        _orgAndProject = orgAndProject ?? throw new ArgumentNullException(nameof(orgAndProject));
 
         _activitySource = builder._activitySource ?? throw new ArgumentNullException(nameof(builder._activitySource));
         _dataset = builder._dataset ?? throw new ArgumentNullException(nameof(builder._dataset));
@@ -59,14 +46,13 @@ public sealed class Eval<TInput, TOutput>
     /// <summary>
     /// Runs the evaluation and returns results.
     /// </summary>
-    public EvalResult Run()
+    public async Task<EvalResult> RunAsync()
     {
-        var experiment = _client.GetOrCreateExperiment(
+        var experiment = await _client.GetOrCreateExperiment(
             new CreateExperimentRequest(
                 _orgAndProject.Project.Id,
-                _experimentName,
-                null,
-                null));
+                _experimentName))
+            .ConfigureAwait(false);
 
         var experimentId = experiment.Id;
 
@@ -212,7 +198,7 @@ public sealed class Eval<TInput, TOutput>
         /// <summary>
         /// Build the Eval instance.
         /// </summary>
-        public Eval<TInput, TOutput> Build()
+        public async Task<Eval<TInput, TOutput>> BuildAsync()
         {
             _config ??= BraintrustConfig.FromEnvironment();
             _activitySource ??= BraintrustTracing.GetActivitySource();
@@ -234,7 +220,20 @@ public sealed class Eval<TInput, TOutput>
                 throw new InvalidOperationException("Must provide a task");
             }
 
-            return new Eval<TInput, TOutput>(this);
+            OrganizationAndProjectInfo? orgAndProject;
+
+            if (_projectId == null)
+            {
+                orgAndProject = await _apiClient.GetProjectAndOrgInfo().ConfigureAwait(false)
+                                 ?? throw new InvalidOperationException("Unable to retrieve project and org info");
+            }
+            else
+            {
+                orgAndProject = await _apiClient.GetProjectAndOrgInfo(_projectId).ConfigureAwait(false)
+                                ?? throw new InvalidOperationException($"Invalid project id: {_projectId}");
+            }
+
+            return new Eval<TInput, TOutput>(this, orgAndProject);
         }
 
         /// <summary>
