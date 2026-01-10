@@ -1,8 +1,6 @@
-using System;
 using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Diagnostics;
-using System.Net.Http;
 using OpenAI;
 
 namespace Braintrust.Sdk.Instrumentation.OpenAI;

@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Braintrust.Sdk.Config;
 
 /// <summary>
@@ -21,13 +18,7 @@ public sealed class BraintrustConfig : BaseConfig
     public string? DefaultProjectName { get; }
     public bool EnableTraceConsoleLog { get; }
     public bool Debug { get; }
-    public bool ExperimentalOtelLogs { get; }
     public TimeSpan RequestTimeout { get; }
-
-    /// <summary>
-    /// Setting for unit testing. Do not use in production.
-    /// </summary>
-    public bool ExportSpansInMemoryForUnitTest { get; }
 
     public static BraintrustConfig FromEnvironment()
     {

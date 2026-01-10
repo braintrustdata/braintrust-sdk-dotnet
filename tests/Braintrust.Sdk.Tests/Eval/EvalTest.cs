@@ -55,8 +55,8 @@ public class EvalTest : IDisposable
             .Cases(cases)
             .TaskFunction(food => "fruit")
             .Scorers(
-                Scorer<string, string>.Of("fruit_scorer", (expected, actual) => expected == "fruit" && actual == "fruit" ? 1.0 : 0.0),
-                Scorer<string, string>.Of("vegetable_scorer", (expected, actual) => expected == "vegetable" && actual == "vegetable" ? 1.0 : 0.0)
+                IScorer<string, string>.Of("fruit_scorer", (expected, actual) => expected == "fruit" && actual == "fruit" ? 1.0 : 0.0),
+                IScorer<string, string>.Of("vegetable_scorer", (expected, actual) => expected == "vegetable" && actual == "vegetable" ? 1.0 : 0.0)
             )
             .BuildAsync();
 
@@ -97,7 +97,7 @@ public class EvalTest : IDisposable
                 .Config(config)
                 .ApiClient(mockClient)
                 .TaskFunction(x => x)
-                .Scorers(Scorer<string, string>.Of("test", (_, _) => 1.0))
+                .Scorers(IScorer<string, string>.Of("test", (_, _) => 1.0))
                 .BuildAsync());
     }
 
@@ -113,7 +113,7 @@ public class EvalTest : IDisposable
                 .Config(config)
                 .ApiClient(mockClient)
                 .Cases(DatasetCase<string, string>.Of("input", "expected"))
-                .Scorers(Scorer<string, string>.Of("test", (_, _) => 1.0))
+                .Scorers(IScorer<string, string>.Of("test", (_, _) => 1.0))
                 .BuildAsync());
     }
 
@@ -131,7 +131,7 @@ public class EvalTest : IDisposable
     [Fact]
     public void ScorerCreatesValidScore()
     {
-        var scorer = Scorer<string, string>.Of("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
+        var scorer = IScorer<string, string>.Of("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
         var taskResult = new TaskResult<string, string>(
             "expected",
             DatasetCase<string, string>.Of("input", "expected")
@@ -147,7 +147,7 @@ public class EvalTest : IDisposable
     [Fact]
     public void DatasetOfCreatesInMemoryDataset()
     {
-        var dataset = Dataset<string, string>.Of(
+        var dataset = IDataset<string, string>.Of(
             DatasetCase<string, string>.Of("input1", "output1"),
             DatasetCase<string, string>.Of("input2", "output2")
         );

@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Braintrust.Sdk.Eval;
 
 /// <summary>
@@ -8,7 +5,7 @@ namespace Braintrust.Sdk.Eval;
 /// </summary>
 /// <typeparam name="TInput">Type of the input data</typeparam>
 /// <typeparam name="TOutput">Type of the output data</typeparam>
-public interface Scorer<TInput, TOutput>
+public interface IScorer<TInput, TOutput>
     where TInput : notnull
     where TOutput : notnull
 {
@@ -20,7 +17,7 @@ public interface Scorer<TInput, TOutput>
     /// <summary>
     /// Score the task result and return one or more scores.
     /// </summary>
-    List<Score> Score(TaskResult<TInput, TOutput> taskResult);
+    IReadOnlyList<Score> Score(TaskResult<TInput, TOutput> taskResult);
 
     /// <summary>
     /// Create a scorer from a function that takes the output and returns a score.
@@ -28,32 +25,8 @@ public interface Scorer<TInput, TOutput>
     /// <param name="scorerName">Name of the scorer</param>
     /// <param name="scorerFn">Function that takes (expectedValue, actualValue) and returns a score between 0.0 and 1.0</param>
     /// <returns>A scorer instance</returns>
-    public static Scorer<TInput, TOutput> Of(string scorerName, Func<TOutput, TOutput, double> scorerFn)
+    public static IScorer<TInput, TOutput> Of(string scorerName, Func<TOutput, TOutput, double> scorerFn)
     {
         return new FunctionScorer<TInput, TOutput>(scorerName, scorerFn);
-    }
-}
-
-/// <summary>
-/// Internal implementation of a scorer from a function.
-/// </summary>
-internal class FunctionScorer<TInput, TOutput> : Scorer<TInput, TOutput>
-    where TInput : notnull
-    where TOutput : notnull
-{
-    private readonly string _name;
-    private readonly Func<TOutput, TOutput, double> _scorerFn;
-
-    public FunctionScorer(string name, Func<TOutput, TOutput, double> scorerFn)
-    {
-        _name = name;
-        _scorerFn = scorerFn;
-    }
-
-    public string GetName() => _name;
-
-    public List<Score> Score(TaskResult<TInput, TOutput> taskResult)
-    {
-        return new List<Score> { new Score(_name, _scorerFn(taskResult.DatasetCase.Expected, taskResult.Result)) };
     }
 }

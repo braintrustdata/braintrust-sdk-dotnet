@@ -1,5 +1,3 @@
-using System;
-
 namespace Braintrust.Sdk.Eval;
 
 /// <summary>
@@ -10,7 +8,7 @@ namespace Braintrust.Sdk.Eval;
 /// </summary>
 /// <typeparam name="TInput">Type of the input data</typeparam>
 /// <typeparam name="TOutput">Type of the output data</typeparam>
-public interface Dataset<TInput, TOutput>
+public interface IDataset<TInput, TOutput>
     where TInput : notnull
     where TOutput : notnull
 {
@@ -32,30 +30,8 @@ public interface Dataset<TInput, TOutput>
     /// <summary>
     /// Create an in-memory Dataset containing the provided cases.
     /// </summary>
-    public static Dataset<TInput, TOutput> Of(params DatasetCase<TInput, TOutput>[] cases)
+    public static IDataset<TInput, TOutput> Of(params DatasetCase<TInput, TOutput>[] cases)
     {
         return new DatasetInMemoryImpl<TInput, TOutput>(cases);
     }
-}
-
-/// <summary>
-/// A cursor for iterating through dataset cases.
-/// Not thread-safe.
-/// </summary>
-/// <typeparam name="TCase">The type of case being iterated</typeparam>
-public interface ICursor<TCase> : IDisposable
-{
-    /// <summary>
-    /// Fetch the next case. Returns null if there are no more cases to fetch.
-    ///
-    /// Implementations may make external requests to fetch data.
-    ///
-    /// If this method is invoked after Close() or Dispose(), an InvalidOperationException will be thrown.
-    /// </summary>
-    TCase? Next();
-
-    /// <summary>
-    /// Close the cursor and release all resources.
-    /// </summary>
-    void Close();
 }

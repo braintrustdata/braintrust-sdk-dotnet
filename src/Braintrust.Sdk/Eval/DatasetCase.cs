@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Braintrust.Sdk.Eval;
@@ -41,6 +39,6 @@ public record DatasetCase<TInput, TOutput>
 
     public static DatasetCase<TInput, TOutput> Of(TInput input, TOutput expected)
     {
-        return new DatasetCase<TInput, TOutput>(input, expected, Array.Empty<string>(), new Dictionary<string, object>());
+        return new DatasetCase<TInput, TOutput>(input, expected, [], new Dictionary<string, object>());
     }
 }

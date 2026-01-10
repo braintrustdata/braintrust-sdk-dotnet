@@ -52,8 +52,8 @@ class Program
             )
             .TaskFunction(GetFoodType)
             .Scorers(
-              Scorer<string, string>.Of("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0),
-              Scorer<string, string>.Of("close_enough_match", (expected, actual) => expected.Trim().ToLowerInvariant() == actual.Trim().ToLowerInvariant() ? 1.0 : 0.0)
+              IScorer<string, string>.Of("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0),
+              IScorer<string, string>.Of("close_enough_match", (expected, actual) => expected.Trim().ToLowerInvariant() == actual.Trim().ToLowerInvariant() ? 1.0 : 0.0)
             )
             .BuildAsync();
 

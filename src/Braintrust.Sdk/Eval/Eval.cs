@@ -26,9 +26,9 @@ public sealed class Eval<TInput, TOutput>
     private readonly IBraintrustApiClient _client;
     private readonly OrganizationAndProjectInfo _orgAndProject;
     private readonly ActivitySource _activitySource;
-    private readonly Dataset<TInput, TOutput> _dataset;
-    private readonly Task<TInput, TOutput> _task;
-    private readonly IReadOnlyList<Scorer<TInput, TOutput>> _scorers;
+    private readonly IDataset<TInput, TOutput> _dataset;
+    private readonly ITask<TInput, TOutput> _task;
+    private readonly IReadOnlyList<IScorer<TInput, TOutput>> _scorers;
 
     private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject)
     {
@@ -191,9 +191,9 @@ public sealed class Eval<TInput, TOutput>
         internal IBraintrustApiClient? _apiClient;
         internal string? _projectId;
         internal ActivitySource? _activitySource;
-        internal Dataset<TInput, TOutput>? _dataset;
-        internal Task<TInput, TOutput>? _task;
-        internal List<Scorer<TInput, TOutput>> _scorers = new();
+        internal IDataset<TInput, TOutput>? _dataset;
+        internal ITask<TInput, TOutput>? _task;
+        internal List<IScorer<TInput, TOutput>> _scorers = new();
 
         /// <summary>
         /// Build the Eval instance.
@@ -284,7 +284,7 @@ public sealed class Eval<TInput, TOutput>
         /// <summary>
         /// Set the dataset.
         /// </summary>
-        public Builder Dataset(Dataset<TInput, TOutput> dataset)
+        public Builder Dataset(IDataset<TInput, TOutput> dataset)
         {
             _dataset = dataset;
             return this;
@@ -299,13 +299,13 @@ public sealed class Eval<TInput, TOutput>
             {
                 throw new ArgumentException("Must provide at least one case", nameof(cases));
             }
-            return Dataset(Eval.Dataset<TInput, TOutput>.Of(cases));
+            return Dataset(Eval.IDataset<TInput, TOutput>.Of(cases));
         }
 
         /// <summary>
         /// Set the task.
         /// </summary>
-        public Builder Task(Task<TInput, TOutput> task)
+        public Builder Task(ITask<TInput, TOutput> task)
         {
             _task = task;
             return this;
@@ -323,13 +323,13 @@ public sealed class Eval<TInput, TOutput>
         /// <summary>
         /// Set the scorers.
         /// </summary>
-        public Builder Scorers(params Scorer<TInput, TOutput>[] scorers)
+        public Builder Scorers(params IScorer<TInput, TOutput>[] scorers)
         {
             _scorers = scorers.ToList();
             return this;
         }
 
-        private class FunctionTask : Task<TInput, TOutput>
+        private class FunctionTask : ITask<TInput, TOutput>
         {
             private readonly Func<TInput, TOutput> _taskFn;
 

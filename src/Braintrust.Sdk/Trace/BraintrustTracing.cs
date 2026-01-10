@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Braintrust.Sdk.Config;
 using Microsoft.Extensions.Logging;
-using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -88,7 +85,6 @@ public static class BraintrustTracing
             .SetSampler(new AlwaysOnSampler());
     }
 
-
     /// <summary>
     /// Get the singleton ActivitySource for instrumentation.
     /// </summary>
@@ -96,7 +92,6 @@ public static class BraintrustTracing
     {
         return _activitySource.Value;
     }
-
 
     private static string BuildHeaders(BraintrustConfig config)
     {

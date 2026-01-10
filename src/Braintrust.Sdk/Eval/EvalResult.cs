@@ -3,7 +3,7 @@ namespace Braintrust.Sdk.Eval;
 /// <summary>
 /// Results of all eval cases of an experiment.
 /// </summary>
-public class EvalResult
+public readonly struct EvalResult
 {
     /// <summary>
     /// URL to view the experiment results in Braintrust.
