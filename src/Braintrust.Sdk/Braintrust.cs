@@ -45,7 +45,7 @@ public sealed class Braintrust
     /// </summary>
     /// <param name="config">Braintrust configuration</param>
     /// <param name="autoManageOpenTelemetry">When true, automatically set up Braintrust connection and shutdown hooks</param>
-    public static Braintrust Get(BraintrustConfig config, Boolean autoManageOpenTelemetry = true)
+    public static Braintrust Get(BraintrustConfig config, bool autoManageOpenTelemetry = true)
     {
         var current = _instance;
         if (current == null)
@@ -82,7 +82,7 @@ public sealed class Braintrust
     /// <summary>
     /// Create a new Braintrust instance from the given config.
     /// </summary>
-    public static Braintrust Of(BraintrustConfig config, Boolean autoManageOpenTelemetry = true)
+    public static Braintrust Of(BraintrustConfig config, bool autoManageOpenTelemetry = true)
     {
         var apiClient = BraintrustApiClient.Of(config);
         return new Braintrust(config, apiClient, autoManageOpenTelemetry);
@@ -92,7 +92,7 @@ public sealed class Braintrust
     public IBraintrustApiClient ApiClient { get; }
     private volatile OpenTelemetry.Trace.TracerProvider? _tracer;
 
-    private Braintrust(BraintrustConfig config, IBraintrustApiClient apiClient, Boolean autoManageOpenTelemetry)
+    private Braintrust(BraintrustConfig config, IBraintrustApiClient apiClient, bool autoManageOpenTelemetry)
     {
         Config = config ?? throw new ArgumentNullException(nameof(config));
         ApiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
