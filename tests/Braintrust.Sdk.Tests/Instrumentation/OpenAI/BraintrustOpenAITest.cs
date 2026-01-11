@@ -1,15 +1,7 @@
-using System;
-using System.ClientModel;
 using System.ClientModel.Primitives;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Instrumentation.OpenAI;
 using Braintrust.Sdk.Trace;
@@ -19,7 +11,6 @@ using OpenAI.Files;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using Xunit;
 
 namespace Braintrust.Sdk.Tests.Instrumentation.OpenAI;
 
@@ -71,8 +62,8 @@ public class BraintrustOpenAITest : IDisposable
     private TracerProvider SetupOpenTelemetry()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_EXPORT_SPANS_IN_MEMORY_FOR_UNIT_TEST", "true"
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_EXPORT_SPANS_IN_MEMORY_FOR_UNIT_TEST", "true")
         );
 
         var braintrust = Braintrust.Of(config);

@@ -25,24 +25,19 @@ public sealed class BraintrustConfig : BaseConfig
         return Of();
     }
 
-    public static BraintrustConfig Of(params string[] envOverrides)
+    public static BraintrustConfig Of(params (string Key, string? Value)[] envOverrides)
     {
-        if (envOverrides.Length % 2 != 0)
+        var overridesMap = new Dictionary<string, string?>();
+        
+        foreach (var (key, value) in envOverrides)
         {
-            throw new ArgumentException(
-                $"config overrides require key-value pairs. Found dangling key: {envOverrides[^1]}");
-        }
-
-        var overridesMap = new Dictionary<string, string>();
-        for (int i = 0; i < envOverrides.Length - 1; i += 2)
-        {
-            overridesMap[envOverrides[i]] = envOverrides[i + 1];
+            overridesMap[key] = value;
         }
 
         return new BraintrustConfig(overridesMap);
     }
 
-    private BraintrustConfig(IDictionary<string, string> envOverrides) : base(envOverrides)
+    private BraintrustConfig(IDictionary<string, string?> envOverrides) : base(envOverrides)
     {
         ApiKey = GetRequiredConfig("BRAINTRUST_API_KEY");
         ApiUrl = GetConfig("BRAINTRUST_API_URL", "https://api.braintrust.dev");

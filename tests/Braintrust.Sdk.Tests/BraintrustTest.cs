@@ -1,6 +1,4 @@
-using System;
 using Braintrust.Sdk.Config;
-using Xunit;
 
 namespace Braintrust.Sdk.Tests;
 
@@ -42,7 +40,7 @@ public class BraintrustTest : IDisposable
     [Fact]
     public void GetWithConfigCreatesGlobalInstance()
     {
-        var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "custom-key");
+        var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "custom-key"));
 
         var instance1 = Braintrust.Get(config);
         var instance2 = Braintrust.Get();
@@ -55,8 +53,8 @@ public class BraintrustTest : IDisposable
     [Fact]
     public void GetWithConfigOnlyCreatesOnce()
     {
-        var config1 = BraintrustConfig.Of("BRAINTRUST_API_KEY", "key-1");
-        var config2 = BraintrustConfig.Of("BRAINTRUST_API_KEY", "key-2");
+        var config1 = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "key-1"));
+        var config2 = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "key-2"));
 
         var instance1 = Braintrust.Get(config1);
         var instance2 = Braintrust.Get(config2);
@@ -69,8 +67,8 @@ public class BraintrustTest : IDisposable
     [Fact]
     public void OfCreatesNewInstance()
     {
-        var config1 = BraintrustConfig.Of("BRAINTRUST_API_KEY", "key-1");
-        var config2 = BraintrustConfig.Of("BRAINTRUST_API_KEY", "key-2");
+        var config1 = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "key-1"));
+        var config2 = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "key-2"));
 
         var instance1 = Braintrust.Of(config1);
         var instance2 = Braintrust.Of(config2);
@@ -85,8 +83,8 @@ public class BraintrustTest : IDisposable
     [Fact]
     public void OfDoesNotAffectGlobalInstance()
     {
-        var globalConfig = BraintrustConfig.Of("BRAINTRUST_API_KEY", "global-key");
-        var localConfig = BraintrustConfig.Of("BRAINTRUST_API_KEY", "local-key");
+        var globalConfig = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "global-key"));
+        var localConfig = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "local-key"));
 
         var globalInstance = Braintrust.Get(globalConfig);
         var localInstance = Braintrust.Of(localConfig);
@@ -103,8 +101,8 @@ public class BraintrustTest : IDisposable
     public void ConfigIsAccessible()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_DEBUG", "true"
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_DEBUG", "true")
         );
 
         var instance = Braintrust.Of(config);
@@ -117,8 +115,8 @@ public class BraintrustTest : IDisposable
     [Fact]
     public void SetIsThreadSafe()
     {
-        var config1 = BraintrustConfig.Of("BRAINTRUST_API_KEY", "key-1");
-        var config2 = BraintrustConfig.Of("BRAINTRUST_API_KEY", "key-2");
+        var config1 = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "key-1"));
+        var config2 = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "key-2"));
 
         Braintrust? result1 = null;
         Braintrust? result2 = null;
@@ -145,12 +143,12 @@ public class BraintrustTest : IDisposable
     [Fact]
     public void ResetForTestClearsInstance()
     {
-        var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "test-key");
+        var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
         var instance1 = Braintrust.Get(config);
 
         Braintrust.ResetForTest();
 
-        var newConfig = BraintrustConfig.Of("BRAINTRUST_API_KEY", "new-key");
+        var newConfig = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "new-key"));
         var instance2 = Braintrust.Get(newConfig);
 
         Assert.NotSame(instance1, instance2);

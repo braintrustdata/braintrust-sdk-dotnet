@@ -7,11 +7,11 @@ public class BaseConfig
     /// </summary>
     internal static readonly string NullOverride = $"BRAINTRUST_NULL_SENTINAL_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
-    protected readonly IReadOnlyDictionary<string, string> EnvOverrides;
+    protected readonly IReadOnlyDictionary<string, string?> EnvOverrides;
 
-    protected BaseConfig(IDictionary<string, string> envOverrides)
+    protected BaseConfig(IDictionary<string, string?> envOverrides)
     {
-        EnvOverrides = new Dictionary<string, string>(envOverrides);
+        EnvOverrides = new Dictionary<string, string?>(envOverrides);
     }
 
     protected T GetConfig<T>(string settingName, T defaultValue) where T : notnull

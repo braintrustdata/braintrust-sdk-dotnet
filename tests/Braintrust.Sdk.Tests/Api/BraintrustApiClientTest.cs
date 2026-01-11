@@ -21,9 +21,9 @@ public class BraintrustApiClientTest : IDisposable
         };
 
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-api-key",
-            "BRAINTRUST_API_URL", "https://test-api.example.com",
-            "BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project"
+            ("BRAINTRUST_API_KEY", "test-api-key"),
+            ("BRAINTRUST_API_URL", "https://test-api.example.com"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
         _apiClient = new BraintrustApiClient(config, _httpClient);

@@ -1,8 +1,6 @@
-using System;
 using System.Diagnostics;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Trace;
-using Xunit;
 
 namespace Braintrust.Sdk.Tests.Trace;
 
@@ -34,7 +32,7 @@ public class BraintrustSpanProcessorTest : IDisposable
     public void OnStart_AddsParentFromContext()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key"
+            ("BRAINTRUST_API_KEY", "test-key")
         );
         var processor = new BraintrustSpanProcessor(config);
 
@@ -54,7 +52,7 @@ public class BraintrustSpanProcessorTest : IDisposable
     public void OnStart_AddsExperimentParentFromContext()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key"
+            ("BRAINTRUST_API_KEY", "test-key")
         );
         var processor = new BraintrustSpanProcessor(config);
 
@@ -74,8 +72,8 @@ public class BraintrustSpanProcessorTest : IDisposable
     public void OnStart_AddsParentFromConfig()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_DEFAULT_PROJECT_ID", "proj-config"
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_DEFAULT_PROJECT_ID", "proj-config")
         );
         var processor = new BraintrustSpanProcessor(config);
 
@@ -93,8 +91,8 @@ public class BraintrustSpanProcessorTest : IDisposable
     public void OnStart_ContextOverridesConfig()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_DEFAULT_PROJECT_ID", "proj-config"
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_DEFAULT_PROJECT_ID", "proj-config")
         );
         var processor = new BraintrustSpanProcessor(config);
 
@@ -114,8 +112,8 @@ public class BraintrustSpanProcessorTest : IDisposable
     public void OnStart_DoesNotOverrideExistingParent()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_DEFAULT_PROJECT_ID", "proj-config"
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_DEFAULT_PROJECT_ID", "proj-config")
         );
         var processor = new BraintrustSpanProcessor(config);
 

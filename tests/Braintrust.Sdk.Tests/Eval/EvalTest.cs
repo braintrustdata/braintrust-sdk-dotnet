@@ -33,9 +33,9 @@ public class EvalTest : IDisposable
     {
         // Arrange
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_APP_URL", "https://braintrust.dev",
-            "BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project"
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
         // Create a mock API client that doesn't make real API calls
@@ -72,7 +72,7 @@ public class EvalTest : IDisposable
     [Fact]
     public async Task EvalRequiresAtLeastOneScorer()
     {
-        var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "test-key");
+        var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
         var mockClient = new MockBraintrustApiClient();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -88,7 +88,7 @@ public class EvalTest : IDisposable
     [Fact]
     public async Task EvalRequiresDataset()
     {
-        var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "test-key");
+        var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
         var mockClient = new MockBraintrustApiClient();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -104,7 +104,7 @@ public class EvalTest : IDisposable
     [Fact]
     public async Task EvalRequiresTask()
     {
-        var config = BraintrustConfig.Of("BRAINTRUST_API_KEY", "test-key");
+        var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
         var mockClient = new MockBraintrustApiClient();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
