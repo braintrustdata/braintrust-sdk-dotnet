@@ -22,4 +22,6 @@ public readonly struct EvalResult
     {
         return $"Experiment complete. View results in braintrust: {ExperimentUrl}";
     }
+
+    public override string ToString() => CreateReportString();
 }
