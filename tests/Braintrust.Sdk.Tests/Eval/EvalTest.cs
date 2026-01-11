@@ -147,7 +147,7 @@ public class EvalTest : IDisposable
     [Fact]
     public async Task DatasetOfCreatesInMemoryDataset()
     {
-        var dataset = IDataset<string, string>.Of(
+        var dataset = Dataset.Of(
             DatasetCase.Of("input1", "output1"),
             DatasetCase.Of("input2", "output2")
         );

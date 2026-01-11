@@ -26,11 +26,21 @@ public interface IDataset<TInput, TOutput>
     /// Gets the dataset version.
     /// </summary>
     string Version { get; }
+}
 
+/// <summary>
+/// Datasets define the cases for evals. This class provides factories for in-memory datasets.
+/// </summary>
+public static class Dataset
+{
     /// <summary>
     /// Create an in-memory Dataset containing the provided cases.
     /// </summary>
-    public static IDataset<TInput, TOutput> Of(params DatasetCase<TInput, TOutput>[] cases)
+    /// <typeparam name="TInput">Type of the input data</typeparam>
+    /// <typeparam name="TOutput">Type of the output data</typeparam>
+    public static IDataset<TInput, TOutput> Of<TInput, TOutput>(params DatasetCase<TInput, TOutput>[] cases)
+        where TInput : notnull
+        where TOutput : notnull
     {
         return new DatasetInMemoryImpl<TInput, TOutput>(cases);
     }

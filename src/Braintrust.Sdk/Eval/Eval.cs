@@ -295,7 +295,7 @@ public sealed class Eval<TInput, TOutput>
             {
                 throw new ArgumentException("Must provide at least one case", nameof(cases));
             }
-            return Dataset(Eval.IDataset<TInput, TOutput>.Of(cases));
+            return Dataset(Eval.Dataset.Of(cases));
         }
 
         /// <summary>
