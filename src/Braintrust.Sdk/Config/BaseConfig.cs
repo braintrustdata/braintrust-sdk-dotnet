@@ -1,6 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+
 namespace Braintrust.Sdk.Config;
 
-public class BaseConfig
+public abstract class BaseConfig
 {
     /// <summary>
     /// Sentinel used to set null in the env. Only used for testing.
@@ -14,23 +17,12 @@ public class BaseConfig
         EnvOverrides = new Dictionary<string, string?>(envOverrides);
     }
 
-    protected T GetConfig<T>(string settingName, T defaultValue) where T : notnull
-    {
-        ArgumentNullException.ThrowIfNull(defaultValue);
-        return GetConfig(settingName, defaultValue, typeof(T))!;
-    }
-
-    protected T? GetConfig<T>(string settingName, T? defaultValue, Type settingType)
+    [return: NotNullIfNotNull(nameof(defaultValue))]
+    protected T? GetConfig<T>(string settingName, T? defaultValue)
+        where T : IParsable<T>
     {
         var rawVal = GetEnvValue(settingName);
-        if (rawVal == null)
-        {
-            return defaultValue;
-        }
-        else
-        {
-            return (T?)Cast(rawVal, settingType);
-        }
+        return rawVal == null ? defaultValue : T.Parse(rawVal, CultureInfo.InvariantCulture);
     }
 
     protected string GetRequiredConfig(string settingName)
@@ -39,46 +31,10 @@ public class BaseConfig
     }
 
     protected T GetRequiredConfig<T>(string settingName)
+        where T : IParsable<T>
     {
-        var value = GetConfig<T>(settingName, default, typeof(T));
-        if (value == null)
-        {
-            throw new InvalidOperationException($"{settingName} is required");
-        }
-        return value;
-    }
-
-    protected object Cast(string value, Type type)
-    {
-        if (type == typeof(string))
-        {
-            return value;
-        }
-        else if (type == typeof(bool))
-        {
-            return bool.Parse(value);
-        }
-        else if (type == typeof(int))
-        {
-            return int.Parse(value);
-        }
-        else if (type == typeof(long))
-        {
-            return long.Parse(value);
-        }
-        else if (type == typeof(float))
-        {
-            return float.Parse(value);
-        }
-        else if (type == typeof(double))
-        {
-            return double.Parse(value);
-        }
-        else
-        {
-            throw new InvalidOperationException(
-                $"Unsupported default class: {type} -- please implement or use a different default");
-        }
+        var value = GetConfig<T>(settingName, default);
+        return value ?? throw new InvalidOperationException($"{settingName} is required");
     }
 
     protected string? GetEnvValue(string settingName)

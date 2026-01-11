@@ -44,7 +44,7 @@ public sealed class BraintrustConfig : BaseConfig
         AppUrl = GetConfig("BRAINTRUST_APP_URL", "https://www.braintrust.dev");
         TracesPath = GetConfig("BRAINTRUST_TRACES_PATH", "/otel/v1/traces");
         LogsPath = GetConfig("BRAINTRUST_LOGS_PATH", "/otel/v1/logs");
-        DefaultProjectId = GetConfig<string?>("BRAINTRUST_DEFAULT_PROJECT_ID", null, typeof(string));
+        DefaultProjectId = GetConfig<string>("BRAINTRUST_DEFAULT_PROJECT_ID", null);
         DefaultProjectName = GetConfig("BRAINTRUST_DEFAULT_PROJECT_NAME", "default-dotnet-project");
         EnableTraceConsoleLog = GetConfig("BRAINTRUST_ENABLE_TRACE_CONSOLE_LOG", false);
         Debug = GetConfig("BRAINTRUST_DEBUG", false);
