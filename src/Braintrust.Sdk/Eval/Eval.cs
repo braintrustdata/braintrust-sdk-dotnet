@@ -130,7 +130,7 @@ public sealed class Eval<TInput, TOutput>
                             if (score.Value < 0.0 || score.Value > 1.0)
                             {
                                 throw new InvalidOperationException(
-                                    $"Score must be between 0 and 1: {scorer.GetName()} : {score}");
+                                    $"Score must be between 0 and 1: {scorer.Name} : {score}");
                             }
                             nameToScore[score.Name] = score.Value;
                         }
