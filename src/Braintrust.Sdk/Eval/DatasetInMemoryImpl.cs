@@ -19,45 +19,11 @@ internal class DatasetInMemoryImpl<TInput, TOutput> : IDataset<TInput, TOutput>
 
     public string Version => "0";
 
-    public ICursor<DatasetCase<TInput, TOutput>> OpenCursor()
+    public async IAsyncEnumerable<DatasetCase<TInput, TOutput>> GetCasesAsync()
     {
-        return new InMemoryCursor(_cases);
-    }
-
-    private class InMemoryCursor : ICursor<DatasetCase<TInput, TOutput>>
-    {
-        private readonly IReadOnlyList<DatasetCase<TInput, TOutput>> _cases;
-        private int _nextIndex;
-        private bool _closed;
-
-        public InMemoryCursor(IReadOnlyList<DatasetCase<TInput, TOutput>> cases)
+        foreach (var item in _cases)
         {
-            _cases = cases;
-        }
-
-        public DatasetCase<TInput, TOutput>? Next()
-        {
-            if (_closed)
-            {
-                throw new InvalidOperationException("This method may not be invoked after Close");
-            }
-
-            if (_nextIndex < _cases.Count)
-            {
-                return _cases[_nextIndex++];
-            }
-
-            return default;
-        }
-
-        public void Close()
-        {
-            _closed = true;
-        }
-
-        public void Dispose()
-        {
-            Close();
+            yield return item;
         }
     }
 }

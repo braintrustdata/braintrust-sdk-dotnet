@@ -145,7 +145,7 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
-    public void DatasetOfCreatesInMemoryDataset()
+    public async Task DatasetOfCreatesInMemoryDataset()
     {
         var dataset = IDataset<string, string>.Of(
             DatasetCase.Of("input1", "output1"),
@@ -156,15 +156,17 @@ public class EvalTest : IDisposable
         Assert.NotNull(dataset.Id);
         Assert.NotNull(dataset.Version);
 
-        using var cursor = dataset.OpenCursor();
-        var case1 = cursor.Next();
-        var case2 = cursor.Next();
-        var case3 = cursor.Next();
+        await using var cursor = dataset.GetCasesAsync().GetAsyncEnumerator();
+
+        Assert.True(await cursor.MoveNextAsync());
+        var case1 = cursor.Current;
+        Assert.True(await cursor.MoveNextAsync());
+        var case2 = cursor.Current;
+        Assert.False(await cursor.MoveNextAsync());
 
         Assert.NotNull(case1);
         Assert.Equal("input1", case1.Input);
         Assert.NotNull(case2);
         Assert.Equal("input2", case2.Input);
-        Assert.Null(case3);
     }
 }

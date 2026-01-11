@@ -56,13 +56,9 @@ public sealed class Eval<TInput, TOutput>
 
         var experimentId = experiment.Id;
 
-        using (var cursor = _dataset.OpenCursor())
+        await foreach (var datasetCase in _dataset.GetCasesAsync())
         {
-            DatasetCase<TInput, TOutput>? datasetCase;
-            while ((datasetCase = cursor.Next()) != null)
-            {
-                EvalOne(experimentId, datasetCase);
-            }
+            EvalOne(experimentId, datasetCase);
         }
 
         var experimentUrl = CreateExperimentUrl(_config.AppUrl, _orgAndProject, _experimentName);

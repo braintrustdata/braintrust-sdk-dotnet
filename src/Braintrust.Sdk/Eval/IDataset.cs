@@ -15,7 +15,7 @@ public interface IDataset<TInput, TOutput>
     /// <summary>
     /// Open a cursor to iterate through dataset cases.
     /// </summary>
-    ICursor<DatasetCase<TInput, TOutput>> OpenCursor();
+    IAsyncEnumerable<DatasetCase<TInput, TOutput>> GetCasesAsync();
 
     /// <summary>
     /// Gets the dataset ID.
