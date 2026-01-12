@@ -165,7 +165,7 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.ApiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         return await HandleResponseAsync<TResponse>(response, cancellationToken).ConfigureAwait(false);
     }
 
