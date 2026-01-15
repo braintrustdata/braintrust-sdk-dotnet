@@ -1,7 +1,5 @@
-using System;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Trace;
-using Xunit;
 
 namespace Braintrust.Sdk.Tests.Trace;
 
@@ -12,8 +10,8 @@ public class BraintrustTracingTest
     public void Of_CreatesTracerProvider()
     {
         var config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-key",
-            "BRAINTRUST_API_URL", "https://test-api.example.com"
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_API_URL", "https://test-api.example.com")
         );
 
         using var tracerProvider = BraintrustTracing.CreateTracerProvider(config);

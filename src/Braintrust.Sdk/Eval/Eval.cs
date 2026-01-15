@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Text.Json;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
@@ -29,26 +26,16 @@ public sealed class Eval<TInput, TOutput>
     private readonly IBraintrustApiClient _client;
     private readonly OrganizationAndProjectInfo _orgAndProject;
     private readonly ActivitySource _activitySource;
-    private readonly Dataset<TInput, TOutput> _dataset;
-    private readonly Task<TInput, TOutput> _task;
-    private readonly IReadOnlyList<Scorer<TInput, TOutput>> _scorers;
+    private readonly IDataset<TInput, TOutput> _dataset;
+    private readonly ITask<TInput, TOutput> _task;
+    private readonly IReadOnlyList<IScorer<TInput, TOutput>> _scorers;
 
-    private Eval(Builder builder)
+    private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject)
     {
         _experimentName = builder._experimentName;
         _config = builder._config ?? throw new ArgumentNullException(nameof(builder._config));
         _client = builder._apiClient ?? throw new ArgumentNullException(nameof(builder._apiClient));
-
-        if (builder._projectId == null)
-        {
-            _orgAndProject = _client.GetProjectAndOrgInfo()
-                ?? throw new InvalidOperationException("Unable to retrieve project and org info");
-        }
-        else
-        {
-            _orgAndProject = _client.GetProjectAndOrgInfo(builder._projectId)
-                ?? throw new InvalidOperationException($"Invalid project id: {builder._projectId}");
-        }
+        _orgAndProject = orgAndProject ?? throw new ArgumentNullException(nameof(orgAndProject));
 
         _activitySource = builder._activitySource ?? throw new ArgumentNullException(nameof(builder._activitySource));
         _dataset = builder._dataset ?? throw new ArgumentNullException(nameof(builder._dataset));
@@ -59,24 +46,19 @@ public sealed class Eval<TInput, TOutput>
     /// <summary>
     /// Runs the evaluation and returns results.
     /// </summary>
-    public EvalResult Run()
+    public async Task<EvalResult> RunAsync()
     {
-        var experiment = _client.GetOrCreateExperiment(
+        var experiment = await _client.GetOrCreateExperiment(
             new CreateExperimentRequest(
                 _orgAndProject.Project.Id,
-                _experimentName,
-                null,
-                null));
+                _experimentName))
+            .ConfigureAwait(false);
 
         var experimentId = experiment.Id;
 
-        using (var cursor = _dataset.OpenCursor())
+        await foreach (var datasetCase in _dataset.GetCasesAsync())
         {
-            DatasetCase<TInput, TOutput>? datasetCase;
-            while ((datasetCase = cursor.Next()) != null)
-            {
-                EvalOne(experimentId, datasetCase);
-            }
+            EvalOne(experimentId, datasetCase);
         }
 
         var experimentUrl = CreateExperimentUrl(_config.AppUrl, _orgAndProject, _experimentName);
@@ -144,7 +126,7 @@ public sealed class Eval<TInput, TOutput>
                             if (score.Value < 0.0 || score.Value > 1.0)
                             {
                                 throw new InvalidOperationException(
-                                    $"Score must be between 0 and 1: {scorer.GetName()} : {score}");
+                                    $"Score must be between 0 and 1: {scorer.Name} : {score}");
                             }
                             nameToScore[score.Name] = score.Value;
                         }
@@ -205,14 +187,14 @@ public sealed class Eval<TInput, TOutput>
         internal IBraintrustApiClient? _apiClient;
         internal string? _projectId;
         internal ActivitySource? _activitySource;
-        internal Dataset<TInput, TOutput>? _dataset;
-        internal Task<TInput, TOutput>? _task;
-        internal List<Scorer<TInput, TOutput>> _scorers = new();
+        internal IDataset<TInput, TOutput>? _dataset;
+        internal ITask<TInput, TOutput>? _task;
+        internal List<IScorer<TInput, TOutput>> _scorers = new();
 
         /// <summary>
         /// Build the Eval instance.
         /// </summary>
-        public Eval<TInput, TOutput> Build()
+        public async Task<Eval<TInput, TOutput>> BuildAsync()
         {
             _config ??= BraintrustConfig.FromEnvironment();
             _activitySource ??= BraintrustTracing.GetActivitySource();
@@ -234,7 +216,20 @@ public sealed class Eval<TInput, TOutput>
                 throw new InvalidOperationException("Must provide a task");
             }
 
-            return new Eval<TInput, TOutput>(this);
+            OrganizationAndProjectInfo? orgAndProject;
+
+            if (_projectId == null)
+            {
+                orgAndProject = await _apiClient.GetProjectAndOrgInfo().ConfigureAwait(false)
+                                 ?? throw new InvalidOperationException("Unable to retrieve project and org info");
+            }
+            else
+            {
+                orgAndProject = await _apiClient.GetProjectAndOrgInfo(_projectId).ConfigureAwait(false)
+                                ?? throw new InvalidOperationException($"Invalid project id: {_projectId}");
+            }
+
+            return new Eval<TInput, TOutput>(this, orgAndProject);
         }
 
         /// <summary>
@@ -285,7 +280,7 @@ public sealed class Eval<TInput, TOutput>
         /// <summary>
         /// Set the dataset.
         /// </summary>
-        public Builder Dataset(Dataset<TInput, TOutput> dataset)
+        public Builder Dataset(IDataset<TInput, TOutput> dataset)
         {
             _dataset = dataset;
             return this;
@@ -300,13 +295,13 @@ public sealed class Eval<TInput, TOutput>
             {
                 throw new ArgumentException("Must provide at least one case", nameof(cases));
             }
-            return Dataset(Eval.Dataset<TInput, TOutput>.Of(cases));
+            return Dataset(Eval.Dataset.Of(cases));
         }
 
         /// <summary>
         /// Set the task.
         /// </summary>
-        public Builder Task(Task<TInput, TOutput> task)
+        public Builder Task(ITask<TInput, TOutput> task)
         {
             _task = task;
             return this;
@@ -324,13 +319,13 @@ public sealed class Eval<TInput, TOutput>
         /// <summary>
         /// Set the scorers.
         /// </summary>
-        public Builder Scorers(params Scorer<TInput, TOutput>[] scorers)
+        public Builder Scorers(params IScorer<TInput, TOutput>[] scorers)
         {
             _scorers = scorers.ToList();
             return this;
         }
 
-        private class FunctionTask : Task<TInput, TOutput>
+        private class FunctionTask : ITask<TInput, TOutput>
         {
             private readonly Func<TInput, TOutput> _taskFn;
 

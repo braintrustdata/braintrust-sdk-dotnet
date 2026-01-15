@@ -1,33 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
 using Braintrust.Sdk.Config;
 
 namespace Braintrust.Sdk.Api;
-
-/// <summary>
-/// Exception thrown when an API request fails.
-/// </summary>
-public class ApiException : Exception
-{
-    public int? StatusCode { get; }
-
-    public ApiException(string message) : base(message) { }
-
-    public ApiException(string message, Exception innerException) : base(message, innerException) { }
-
-    public ApiException(int statusCode, string message) : base(message)
-    {
-        StatusCode = statusCode;
-    }
-}
 
 /// <summary>
 /// Implementation of Braintrust API client.
@@ -64,12 +41,11 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
 
     private static HttpClient CreateDefaultHttpClient(BraintrustConfig config)
     {
-        var client = new HttpClient
+        return new HttpClient
         {
             BaseAddress = new Uri(config.ApiUrl),
             Timeout = config.RequestTimeout
         };
-        return client;
     }
 
     private static JsonSerializerOptions CreateJsonOptions()
@@ -82,19 +58,17 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         };
     }
 
-    public Project GetOrCreateProject(string projectName)
+    public async Task<Project> GetOrCreateProject(string projectName)
     {
         var request = new CreateProjectRequest(projectName);
-        return PostAsync<CreateProjectRequest, Project>("/v1/project", request, default)
-            .ConfigureAwait(false).GetAwaiter().GetResult();
+        return await PostAsync<CreateProjectRequest, Project>("/v1/project", request).ConfigureAwait(false);
     }
 
-    public Project? GetProject(string projectId)
+    public async Task<Project?> GetProject(string projectId)
     {
         try
         {
-            return GetAsync<Project>($"/v1/project/{projectId}", default)
-                .ConfigureAwait(false).GetAwaiter().GetResult();
+            return await GetAsync<Project>($"/v1/project/{projectId}").ConfigureAwait(false);
         }
         catch (ApiException ex) when (ex.StatusCode == 404)
         {
@@ -102,37 +76,37 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         }
     }
 
-    public Experiment GetOrCreateExperiment(CreateExperimentRequest request)
+    public async Task<Experiment> GetOrCreateExperiment(CreateExperimentRequest request)
     {
-        return PostAsync<CreateExperimentRequest, Experiment>("/v1/experiment", request, default)
-            .ConfigureAwait(false).GetAwaiter().GetResult();
+        return await PostAsync<CreateExperimentRequest, Experiment>("/v1/experiment", request)
+            .ConfigureAwait(false);
     }
 
-    public OrganizationAndProjectInfo? GetProjectAndOrgInfo()
+    public async Task<OrganizationAndProjectInfo?> GetProjectAndOrgInfo()
     {
         if (_config.DefaultProjectId != null)
         {
-            return GetProjectAndOrgInfo(_config.DefaultProjectId);
+            return await GetProjectAndOrgInfo(_config.DefaultProjectId).ConfigureAwait(false);
         }
 
         if (_config.DefaultProjectName != null)
         {
-            var project = GetOrCreateProject(_config.DefaultProjectName);
-            return GetProjectAndOrgInfo(project.Id);
+            var project = await GetOrCreateProject(_config.DefaultProjectName).ConfigureAwait(false);
+            return await GetProjectAndOrgInfo(project.Id).ConfigureAwait(false);
         }
 
         return null;
     }
 
-    public OrganizationAndProjectInfo? GetProjectAndOrgInfo(string projectId)
+    public async Task<OrganizationAndProjectInfo?> GetProjectAndOrgInfo(string projectId)
     {
-        var project = GetProject(projectId);
+        var project = await GetProject(projectId).ConfigureAwait(false);
         if (project == null)
         {
             return null;
         }
 
-        var loginResponse = Login();
+        var loginResponse = await Login().ConfigureAwait(false);
         var orgInfo = loginResponse.OrgInfo.FirstOrDefault(org =>
             string.Equals(org.Id, project.OrgId, StringComparison.OrdinalIgnoreCase));
 
@@ -144,13 +118,13 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         return new OrganizationAndProjectInfo(orgInfo, project);
     }
 
-    public OrganizationAndProjectInfo GetOrCreateProjectAndOrgInfo()
+    public async Task<OrganizationAndProjectInfo> GetOrCreateProjectAndOrgInfo()
     {
         Project project;
 
         if (_config.DefaultProjectId != null)
         {
-            var existingProject = GetProject(_config.DefaultProjectId);
+            var existingProject = await GetProject(_config.DefaultProjectId).ConfigureAwait(false);
             if (existingProject == null)
             {
                 throw new ApiException($"Project with ID {_config.DefaultProjectId} not found");
@@ -159,14 +133,14 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         }
         else if (_config.DefaultProjectName != null)
         {
-            project = GetOrCreateProject(_config.DefaultProjectName);
+            project = await GetOrCreateProject(_config.DefaultProjectName).ConfigureAwait(false);
         }
         else
         {
             throw new InvalidOperationException("Either DefaultProjectId or DefaultProjectName must be set in config");
         }
 
-        var loginResponse = Login();
+        var loginResponse = await Login().ConfigureAwait(false);
         var orgInfo = loginResponse.OrgInfo.FirstOrDefault(org =>
             string.Equals(org.Id, project.OrgId, StringComparison.OrdinalIgnoreCase));
 
@@ -178,11 +152,11 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         return new OrganizationAndProjectInfo(orgInfo, project);
     }
 
-    private LoginResponse Login()
+    private async Task<LoginResponse> Login()
     {
         var request = new LoginRequest(_config.ApiKey);
-        return PostAsync<LoginRequest, LoginResponse>("/api/apikey/login", request, default)
-            .ConfigureAwait(false).GetAwaiter().GetResult();
+        return await PostAsync<LoginRequest, LoginResponse>("/api/apikey/login", request)
+            .ConfigureAwait(false);
     }
 
     private async Task<TResponse> GetAsync<TResponse>(string path, CancellationToken cancellationToken = default)
@@ -191,8 +165,8 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.ApiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        return await HandleResponseAsync<TResponse>(response, cancellationToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        return await HandleResponseAsync<TResponse>(response, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<TResponse> PostAsync<TRequest, TResponse>(
@@ -205,15 +179,15 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Content = JsonContent.Create(body, options: _jsonOptions);
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        return await HandleResponseAsync<TResponse>(response, cancellationToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        return await HandleResponseAsync<TResponse>(response, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<T> HandleResponseAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
         {
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             var result = JsonSerializer.Deserialize<T>(content, _jsonOptions);
 
             if (result == null)
@@ -225,7 +199,7 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
         }
         else
         {
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             throw new ApiException(
                 (int)response.StatusCode,
                 $"API request failed with status {(int)response.StatusCode}: {content}");
@@ -236,7 +210,7 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
     {
         if (_ownsHttpClient)
         {
-            _httpClient?.Dispose();
+            _httpClient.Dispose();
         }
     }
 }

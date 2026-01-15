@@ -3,7 +3,7 @@ namespace Braintrust.Sdk.Eval;
 /// <summary>
 /// Results of all eval cases of an experiment.
 /// </summary>
-public class EvalResult
+public readonly struct EvalResult
 {
     /// <summary>
     /// URL to view the experiment results in Braintrust.
@@ -22,4 +22,6 @@ public class EvalResult
     {
         return $"Experiment complete. View results in braintrust: {ExperimentUrl}";
     }
+
+    public override string ToString() => CreateReportString();
 }

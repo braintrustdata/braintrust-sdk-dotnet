@@ -1,13 +1,8 @@
-using System;
 using System.Net;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
-using Xunit;
 
 namespace Braintrust.Sdk.Tests.Api;
 
@@ -15,7 +10,6 @@ public class BraintrustApiClientTest : IDisposable
 {
     private readonly TestHttpMessageHandler _handler;
     private readonly HttpClient _httpClient;
-    private readonly BraintrustConfig _config;
     private readonly BraintrustApiClient _apiClient;
 
     public BraintrustApiClientTest()
@@ -26,29 +20,29 @@ public class BraintrustApiClientTest : IDisposable
             BaseAddress = new Uri("https://test-api.example.com")
         };
 
-        _config = BraintrustConfig.Of(
-            "BRAINTRUST_API_KEY", "test-api-key",
-            "BRAINTRUST_API_URL", "https://test-api.example.com",
-            "BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project"
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-api-key"),
+            ("BRAINTRUST_API_URL", "https://test-api.example.com"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        _apiClient = new BraintrustApiClient(_config, _httpClient);
+        _apiClient = new BraintrustApiClient(config, _httpClient);
     }
 
     public void Dispose()
     {
-        _apiClient?.Dispose();
-        _httpClient?.Dispose();
-        _handler?.Dispose();
+        _apiClient.Dispose();
+        _httpClient.Dispose();
+        _handler.Dispose();
     }
 
     [Fact]
-    public void GetOrCreateProject_CreatesProject()
+    public async Task GetOrCreateProject_CreatesProject()
     {
         var expectedProject = new Project("proj-123", "test-project", "org-456");
         _handler.SetResponse(HttpStatusCode.OK, expectedProject);
 
-        var result = _apiClient.GetOrCreateProject("test-project");
+        var result = await _apiClient.GetOrCreateProject("test-project");
 
         Assert.NotNull(result);
         Assert.Equal("proj-123", result.Id);
@@ -62,37 +56,37 @@ public class BraintrustApiClientTest : IDisposable
     }
 
     [Fact]
-    public void GetProject_ReturnsProject()
+    public async Task GetProject_ReturnsProject()
     {
         var expectedProject = new Project("proj-123", "test-project", "org-456");
         _handler.SetResponse(HttpStatusCode.OK, expectedProject);
 
-        var result = _apiClient.GetProject("proj-123");
+        var result = await _apiClient.GetProject("proj-123");
 
         Assert.NotNull(result);
-        Assert.Equal("proj-123", result!.Id);
+        Assert.Equal("proj-123", result.Id);
         Assert.Equal(HttpMethod.Get, _handler.LastRequest?.Method);
         Assert.Equal("/v1/project/proj-123", _handler.LastRequest?.RequestUri?.AbsolutePath);
     }
 
     [Fact]
-    public void GetProject_ReturnsNull_When404()
+    public async Task GetProject_ReturnsNull_When404()
     {
         _handler.SetResponse(HttpStatusCode.NotFound, "Not found");
 
-        var result = _apiClient.GetProject("missing-project");
+        var result = await _apiClient.GetProject("missing-project");
 
         Assert.Null(result);
     }
 
     [Fact]
-    public void GetOrCreateExperiment_CreatesExperiment()
+    public async Task GetOrCreateExperiment_CreatesExperiment()
     {
         var expectedExperiment = new Experiment("exp-123", "proj-456", "test-experiment");
         _handler.SetResponse(HttpStatusCode.OK, expectedExperiment);
 
         var request = new CreateExperimentRequest("proj-456", "test-experiment", "Test description");
-        var result = _apiClient.GetOrCreateExperiment(request);
+        var result = await _apiClient.GetOrCreateExperiment(request);
 
         Assert.NotNull(result);
         Assert.Equal("exp-123", result.Id);
@@ -103,21 +97,18 @@ public class BraintrustApiClientTest : IDisposable
     }
 
     [Fact]
-    public void GetOrCreateProjectAndOrgInfo_ReturnsInfo()
+    public async Task GetOrCreateProjectAndOrgInfo_ReturnsInfo()
     {
         // Setup: First call creates/gets project, second call is login
         var project = new Project("proj-123", "test-project", "org-456");
-        var loginResponse = new LoginResponse(new System.Collections.Generic.List<OrganizationInfo>
-        {
-            new OrganizationInfo("org-456", "Test Org")
-        });
+        var loginResponse = new LoginResponse([new OrganizationInfo("org-456", "Test Org")]);
 
         _handler.SetResponses(
             (HttpStatusCode.OK, project),
             (HttpStatusCode.OK, loginResponse)
         );
 
-        var result = _apiClient.GetOrCreateProjectAndOrgInfo();
+        var result = await _apiClient.GetOrCreateProjectAndOrgInfo();
 
         Assert.NotNull(result);
         Assert.Equal("proj-123", result.Project.Id);
@@ -126,11 +117,11 @@ public class BraintrustApiClientTest : IDisposable
     }
 
     [Fact]
-    public void ApiException_ThrownOn_HttpError()
+    public async Task ApiException_ThrownOn_HttpError()
     {
         _handler.SetResponse(HttpStatusCode.BadRequest, "Bad request");
 
-        var exception = Assert.Throws<ApiException>(() =>
+        var exception = await Assert.ThrowsAsync<ApiException>(() =>
             _apiClient.GetProject("test"));
 
         Assert.Equal(400, exception.StatusCode);

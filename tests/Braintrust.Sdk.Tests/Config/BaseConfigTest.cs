@@ -1,31 +1,21 @@
-using System;
-using System.Collections.Generic;
 using Braintrust.Sdk.Config;
-using Xunit;
 
 namespace Braintrust.Sdk.Tests.Config;
 
 public class BaseConfigTest
 {
     // Test implementation of BaseConfig for testing purposes
-    private class TestConfig : BaseConfig
+    private class TestConfig(IDictionary<string, string?>? envOverrides = null)
+        : BaseConfig(envOverrides ?? new Dictionary<string, string?>())
     {
-        public TestConfig(IDictionary<string, string>? envOverrides = null)
-            : base(envOverrides ?? new Dictionary<string, string>())
-        {
-        }
-
-        public new T GetConfig<T>(string settingName, T defaultValue) where T : notnull
+        public new T? GetConfig<T>(string settingName, T? defaultValue)
+            where T : IParsable<T>
         {
             return base.GetConfig(settingName, defaultValue);
         }
 
-        public new T? GetConfig<T>(string settingName, T? defaultValue, Type settingType)
-        {
-            return base.GetConfig<T>(settingName, defaultValue, settingType);
-        }
-
         public new T GetRequiredConfig<T>(string settingName)
+            where T : IParsable<T>
         {
             return base.GetRequiredConfig<T>(settingName);
         }
@@ -35,11 +25,6 @@ public class BaseConfigTest
             return base.GetRequiredConfig(settingName);
         }
 
-        public new object Cast(string value, Type type)
-        {
-            return base.Cast(value, type);
-        }
-
         public new string? GetEnvValue(string settingName)
         {
             return base.GetEnvValue(settingName);
@@ -47,70 +32,9 @@ public class BaseConfigTest
     }
 
     [Fact]
-    public void TestCastBoolean()
-    {
-        var config = new TestConfig();
-        Assert.True((bool)config.Cast("true", typeof(bool)));
-        Assert.False((bool)config.Cast("false", typeof(bool)));
-        Assert.True((bool)config.Cast("True", typeof(bool)));
-        Assert.False((bool)config.Cast("False", typeof(bool)));
-    }
-
-    [Fact]
-    public void TestCastInteger()
-    {
-        var config = new TestConfig();
-        Assert.Equal(123, (int)config.Cast("123", typeof(int)));
-        Assert.Equal(-456, (int)config.Cast("-456", typeof(int)));
-        Assert.Equal(0, (int)config.Cast("0", typeof(int)));
-    }
-
-    [Fact]
-    public void TestCastLong()
-    {
-        var config = new TestConfig();
-        Assert.Equal(123L, (long)config.Cast("123", typeof(long)));
-        Assert.Equal(long.MaxValue, (long)config.Cast(long.MaxValue.ToString(), typeof(long)));
-        Assert.Equal(long.MinValue, (long)config.Cast(long.MinValue.ToString(), typeof(long)));
-    }
-
-    [Fact]
-    public void TestCastFloat()
-    {
-        var config = new TestConfig();
-        Assert.Equal(123.45f, (float)config.Cast("123.45", typeof(float)), precision: 2);
-        Assert.Equal(-678.90f, (float)config.Cast("-678.90", typeof(float)), precision: 2);
-    }
-
-    [Fact]
-    public void TestCastDouble()
-    {
-        var config = new TestConfig();
-        Assert.Equal(123.456789, (double)config.Cast("123.456789", typeof(double)), precision: 6);
-        Assert.Equal(-987.654321, (double)config.Cast("-987.654321", typeof(double)), precision: 6);
-    }
-
-    [Fact]
-    public void TestCastString()
-    {
-        var config = new TestConfig();
-        Assert.Equal("hello", (string)config.Cast("hello", typeof(string)));
-        Assert.Equal("world", (string)config.Cast("world", typeof(string)));
-    }
-
-    [Fact]
-    public void TestCastUnsupportedType()
-    {
-        var config = new TestConfig();
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            config.Cast("test", typeof(DateTime)));
-        Assert.Contains("Unsupported default class", exception.Message);
-    }
-
-    [Fact]
     public void TestGetRequiredConfigSuccess()
     {
-        var overrides = new Dictionary<string, string>
+        var overrides = new Dictionary<string, string?>
         {
             { "REQUIRED_VAR", "test_value" }
         };
@@ -131,7 +55,7 @@ public class BaseConfigTest
     [Fact]
     public void TestGetRequiredConfigWithType()
     {
-        var overrides = new Dictionary<string, string>
+        var overrides = new Dictionary<string, string?>
         {
             { "INT_VAR", "42" },
             { "BOOL_VAR", "true" }
@@ -146,7 +70,7 @@ public class BaseConfigTest
     public void TestGetConfigWithNullDefault()
     {
         var config = new TestConfig();
-        var result = config.GetConfig<string?>("MISSING_VAR", null, typeof(string));
+        var result = config.GetConfig<string>("MISSING_VAR", null);
         Assert.Null(result);
     }
 
@@ -162,7 +86,7 @@ public class BaseConfigTest
     [Fact]
     public void TestGetEnvValueFromOverrides()
     {
-        var overrides = new Dictionary<string, string>
+        var overrides = new Dictionary<string, string?>
         {
             { "TEST_VAR", "override_value" }
         };
@@ -183,7 +107,7 @@ public class BaseConfigTest
     [Fact]
     public void TestNullSentinelHandling()
     {
-        var overrides = new Dictionary<string, string>
+        var overrides = new Dictionary<string, string?>
         {
             { "NULL_VAR", BaseConfig.NullOverride }
         };
@@ -196,7 +120,7 @@ public class BaseConfigTest
     public void TestGetConfigHierarchy()
     {
         // Test that overrides take precedence over default values
-        var overrides = new Dictionary<string, string>
+        var overrides = new Dictionary<string, string?>
         {
             { "OVERRIDE_VAR", "from_override" }
         };
@@ -209,7 +133,7 @@ public class BaseConfigTest
     [Fact]
     public void TestIntegrationWithAllTypes()
     {
-        var overrides = new Dictionary<string, string>
+        var overrides = new Dictionary<string, string?>
         {
             { "STR_VAR", "hello" },
             { "BOOL_VAR", "true" },

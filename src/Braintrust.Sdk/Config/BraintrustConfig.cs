@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace Braintrust.Sdk.Config;
 
 /// <summary>
@@ -21,44 +18,33 @@ public sealed class BraintrustConfig : BaseConfig
     public string? DefaultProjectName { get; }
     public bool EnableTraceConsoleLog { get; }
     public bool Debug { get; }
-    public bool ExperimentalOtelLogs { get; }
     public TimeSpan RequestTimeout { get; }
-
-    /// <summary>
-    /// Setting for unit testing. Do not use in production.
-    /// </summary>
-    public bool ExportSpansInMemoryForUnitTest { get; }
 
     public static BraintrustConfig FromEnvironment()
     {
         return Of();
     }
 
-    public static BraintrustConfig Of(params string[] envOverrides)
+    public static BraintrustConfig Of(params (string Key, string? Value)[] envOverrides)
     {
-        if (envOverrides.Length % 2 != 0)
+        var overridesMap = new Dictionary<string, string?>();
+        
+        foreach (var (key, value) in envOverrides)
         {
-            throw new ArgumentException(
-                $"config overrides require key-value pairs. Found dangling key: {envOverrides[^1]}");
-        }
-
-        var overridesMap = new Dictionary<string, string>();
-        for (int i = 0; i < envOverrides.Length - 1; i += 2)
-        {
-            overridesMap[envOverrides[i]] = envOverrides[i + 1];
+            overridesMap[key] = value;
         }
 
         return new BraintrustConfig(overridesMap);
     }
 
-    private BraintrustConfig(IDictionary<string, string> envOverrides) : base(envOverrides)
+    private BraintrustConfig(IDictionary<string, string?> envOverrides) : base(envOverrides)
     {
         ApiKey = GetRequiredConfig("BRAINTRUST_API_KEY");
         ApiUrl = GetConfig("BRAINTRUST_API_URL", "https://api.braintrust.dev");
         AppUrl = GetConfig("BRAINTRUST_APP_URL", "https://www.braintrust.dev");
         TracesPath = GetConfig("BRAINTRUST_TRACES_PATH", "/otel/v1/traces");
         LogsPath = GetConfig("BRAINTRUST_LOGS_PATH", "/otel/v1/logs");
-        DefaultProjectId = GetConfig<string?>("BRAINTRUST_DEFAULT_PROJECT_ID", null, typeof(string));
+        DefaultProjectId = GetConfig<string>("BRAINTRUST_DEFAULT_PROJECT_ID", null);
         DefaultProjectName = GetConfig("BRAINTRUST_DEFAULT_PROJECT_NAME", "default-dotnet-project");
         EnableTraceConsoleLog = GetConfig("BRAINTRUST_ENABLE_TRACE_CONSOLE_LOG", false);
         Debug = GetConfig("BRAINTRUST_DEBUG", false);

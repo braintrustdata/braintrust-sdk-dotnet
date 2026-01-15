@@ -8,30 +8,30 @@ public interface IBraintrustApiClient
     /// <summary>
     /// Get or create a project by name.
     /// </summary>
-    Project GetOrCreateProject(string projectName);
+    Task<Project> GetOrCreateProject(string projectName);
 
     /// <summary>
     /// Get a project by ID.
     /// </summary>
-    Project? GetProject(string projectId);
+    Task<Project?> GetProject(string projectId);
 
     /// <summary>
     /// Get or create an experiment.
     /// </summary>
-    Experiment GetOrCreateExperiment(CreateExperimentRequest request);
+    Task<Experiment> GetOrCreateExperiment(CreateExperimentRequest request);
 
     /// <summary>
     /// Get project and organization information using the default project from config.
     /// </summary>
-    OrganizationAndProjectInfo? GetProjectAndOrgInfo();
+    Task<OrganizationAndProjectInfo?> GetProjectAndOrgInfo();
 
     /// <summary>
     /// Get project and organization information for a specific project ID.
     /// </summary>
-    OrganizationAndProjectInfo? GetProjectAndOrgInfo(string projectId);
+    Task<OrganizationAndProjectInfo?> GetProjectAndOrgInfo(string projectId);
 
     /// <summary>
     /// Get or create project and organization information from config.
     /// </summary>
-    OrganizationAndProjectInfo GetOrCreateProjectAndOrgInfo();
+    Task<OrganizationAndProjectInfo> GetOrCreateProjectAndOrgInfo();
 }

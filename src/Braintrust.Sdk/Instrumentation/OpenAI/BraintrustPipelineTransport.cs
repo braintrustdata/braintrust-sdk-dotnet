@@ -1,10 +1,6 @@
-using System;
 using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Diagnostics;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Braintrust.Sdk.Instrumentation.OpenAI;
 
