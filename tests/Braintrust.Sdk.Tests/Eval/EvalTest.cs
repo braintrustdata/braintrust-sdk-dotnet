@@ -63,7 +63,6 @@ public class EvalTest : IDisposable
         var result = await eval.RunAsync();
 
         // Assert
-        Assert.NotNull(result);
         Assert.NotNull(result.ExperimentUrl);
         Assert.Contains("test-eval", result.ExperimentUrl);
         Assert.Contains("test-project", result.ExperimentUrl);

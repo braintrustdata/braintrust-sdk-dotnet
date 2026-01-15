@@ -28,7 +28,7 @@ public sealed class BraintrustConfig : BaseConfig
     public static BraintrustConfig Of(params (string Key, string? Value)[] envOverrides)
     {
         var overridesMap = new Dictionary<string, string?>();
-        
+
         foreach (var (key, value) in envOverrides)
         {
             overridesMap[key] = value;
