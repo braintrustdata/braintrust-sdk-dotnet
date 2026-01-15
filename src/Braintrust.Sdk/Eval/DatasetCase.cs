@@ -57,16 +57,6 @@ public record DatasetCase<TInput, TOutput>
         IReadOnlyList<string> tags,
         IReadOnlyDictionary<string, object> metadata)
     {
-        if (tags.Count > 0)
-        {
-            throw new ArgumentException("Tags are not currently supported. Please pass an empty list.", nameof(tags));
-        }
-
-        if (metadata.Count > 0)
-        {
-            throw new ArgumentException("Metadata is not currently supported. Please pass an empty dictionary.", nameof(metadata));
-        }
-
         this.Input = input;
         this.Expected = expected;
         this.Tags = tags;

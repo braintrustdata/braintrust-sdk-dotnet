@@ -84,6 +84,17 @@ public sealed class Eval<TInput, TOutput>
             rootActivity.SetTag("braintrust.input_json", ToJson(new { input = datasetCase.Input }));
             rootActivity.SetTag("braintrust.expected", ToJson(datasetCase.Expected));
 
+            if (datasetCase.Tags.Count > 0)
+            {
+                // Use native string array attribute (not JSON) to match Go/Java SDKs
+                rootActivity.SetTag("braintrust.tags", datasetCase.Tags.ToArray());
+            }
+
+            if (datasetCase.Metadata.Count > 0)
+            {
+                rootActivity.SetTag("braintrust.metadata", ToJson(datasetCase.Metadata));
+            }
+
             using var experimentScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
 
             // Run task

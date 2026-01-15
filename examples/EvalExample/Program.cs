@@ -48,7 +48,12 @@ class Program
                 DatasetCase.Of("strawberry", "fruit"),
                 DatasetCase.Of("asparagus", "vegetable"),
                 DatasetCase.Of("apple", "fruit"),
-                DatasetCase.Of("banana", "fruit")
+                DatasetCase.Of(
+                    "banana",
+                    "fruit",
+                    new List<string> { "sample1" },
+                    new Dictionary<string, object> { { "category", "tropical-fruit" }, { "ripeness", "ripe" } }
+                )
             )
             .TaskFunction(GetFoodType)
             .Scorers(
