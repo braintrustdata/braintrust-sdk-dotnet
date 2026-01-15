@@ -8,7 +8,7 @@ public abstract class BaseConfig
     /// <summary>
     /// Sentinel used to set null in the env. Only used for testing.
     /// </summary>
-    internal static readonly string NullOverride = $"BRAINTRUST_NULL_SENTINAL_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+    internal static readonly string NullOverride = $"BRAINTRUST_NULL_SENTINEL_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
     protected readonly IReadOnlyDictionary<string, string?> EnvOverrides;
 
