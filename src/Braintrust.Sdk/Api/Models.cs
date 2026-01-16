@@ -55,7 +55,9 @@ public record CreateExperimentRequest(
     [property: JsonPropertyName("project_id")] string ProjectId,
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string? Description = null,
-    [property: JsonPropertyName("base_experiment_id")] string? BaseExperimentId = null
+    [property: JsonPropertyName("base_experiment_id")] string? BaseExperimentId = null,
+    [property: JsonPropertyName("tags")] IReadOnlyList<string>? Tags = null,
+    [property: JsonPropertyName("metadata")] IReadOnlyDictionary<string, object>? Metadata = null
 );
 
 /// <summary>

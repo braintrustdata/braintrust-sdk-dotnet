@@ -44,14 +44,22 @@ class Program
         var eval = await braintrust
             .EvalBuilder<string, string>()
             .Name($"dotnet-eval-x-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")
+            // Experiment-level tags and metadata (shown in the Braintrust UI for the experiment)
+            .Tags("food-classifier", "dotnet-sdk", "gpt-4o-mini")
+            .Metadata(new Dictionary<string, object>
+            {
+                { "model", "gpt-4o-mini" },
+                { "description", "Classifies food items as fruit or vegetable" }
+            })
             .Cases(
                 DatasetCase.Of("strawberry", "fruit"),
                 DatasetCase.Of("asparagus", "vegetable"),
                 DatasetCase.Of("apple", "fruit"),
+                // Case-level tags and metadata (shown for individual eval cases)
                 DatasetCase.Of(
                     "banana",
                     "fruit",
-                    new List<string> { "sample1" },
+                    new List<string> { "tropical", "yellow" },
                     new Dictionary<string, object> { { "category", "tropical-fruit" }, { "ripeness", "ripe" } }
                 )
             )

@@ -29,6 +29,8 @@ public sealed class Eval<TInput, TOutput>
     private readonly IDataset<TInput, TOutput> _dataset;
     private readonly ITask<TInput, TOutput> _task;
     private readonly IReadOnlyList<IScorer<TInput, TOutput>> _scorers;
+    private readonly IReadOnlyList<string>? _experimentTags;
+    private readonly IReadOnlyDictionary<string, object>? _experimentMetadata;
 
     private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject)
     {
@@ -41,6 +43,8 @@ public sealed class Eval<TInput, TOutput>
         _dataset = builder._dataset ?? throw new ArgumentNullException(nameof(builder._dataset));
         _task = builder._task ?? throw new ArgumentNullException(nameof(builder._task));
         _scorers = builder._scorers.ToList();
+        _experimentTags = builder._experimentTags;
+        _experimentMetadata = builder._experimentMetadata;
     }
 
     /// <summary>
@@ -51,7 +55,9 @@ public sealed class Eval<TInput, TOutput>
         var experiment = await _client.GetOrCreateExperiment(
             new CreateExperimentRequest(
                 _orgAndProject.Project.Id,
-                _experimentName))
+                _experimentName,
+                Tags: _experimentTags,
+                Metadata: _experimentMetadata))
             .ConfigureAwait(false);
 
         var experimentId = experiment.Id;
@@ -201,6 +207,8 @@ public sealed class Eval<TInput, TOutput>
         internal IDataset<TInput, TOutput>? _dataset;
         internal ITask<TInput, TOutput>? _task;
         internal List<IScorer<TInput, TOutput>> _scorers = new();
+        internal IReadOnlyList<string>? _experimentTags;
+        internal IReadOnlyDictionary<string, object>? _experimentMetadata;
 
         /// <summary>
         /// Build the Eval instance.
@@ -333,6 +341,46 @@ public sealed class Eval<TInput, TOutput>
         public Builder Scorers(params IScorer<TInput, TOutput>[] scorers)
         {
             _scorers = scorers.ToList();
+            return this;
+        }
+
+        /// <summary>
+        /// Set the experiment-level tags.
+        /// These tags are applied to the experiment itself, not individual cases.
+        /// </summary>
+        public Builder Tags(params string[] tags)
+        {
+            _experimentTags = tags.ToList();
+            return this;
+        }
+
+        /// <summary>
+        /// Set the experiment-level tags.
+        /// These tags are applied to the experiment itself, not individual cases.
+        /// </summary>
+        public Builder Tags(IReadOnlyList<string> tags)
+        {
+            _experimentTags = tags.ToList();
+            return this;
+        }
+
+        /// <summary>
+        /// Set the experiment-level metadata.
+        /// This metadata is applied to the experiment itself, not individual cases.
+        /// </summary>
+        public Builder Metadata(IReadOnlyDictionary<string, object> metadata)
+        {
+            _experimentMetadata = new Dictionary<string, object>(metadata);
+            return this;
+        }
+
+        /// <summary>
+        /// Set the experiment-level metadata.
+        /// This metadata is applied to the experiment itself, not individual cases.
+        /// </summary>
+        public Builder Metadata(Dictionary<string, object> metadata)
+        {
+            _experimentMetadata = new Dictionary<string, object>(metadata);
             return this;
         }
 
