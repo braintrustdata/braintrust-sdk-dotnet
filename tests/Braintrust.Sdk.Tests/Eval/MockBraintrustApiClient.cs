@@ -10,6 +10,12 @@ internal class MockBraintrustApiClient : IBraintrustApiClient
     private readonly OrganizationInfo _orgInfo = new OrganizationInfo("test-org-id", "test-org");
     private readonly Project _project = new Project("test-project-id", "test-project", "test-org-id");
 
+    /// <summary>
+    /// The last CreateExperimentRequest received by GetOrCreateExperiment.
+    /// Useful for verifying that tags and metadata were passed correctly.
+    /// </summary>
+    public CreateExperimentRequest? LastCreateExperimentRequest { get; private set; }
+
     public Task<Project> GetOrCreateProject(string projectName)
     {
         return Task.FromResult(_project);
@@ -22,6 +28,7 @@ internal class MockBraintrustApiClient : IBraintrustApiClient
 
     public Task<Experiment> GetOrCreateExperiment(CreateExperimentRequest request)
     {
+        LastCreateExperimentRequest = request;
         return Task.FromResult(new Experiment("test-experiment-id", request.ProjectId, request.Name, request.Description));
     }
 

@@ -128,6 +128,137 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
+    public void DatasetCaseOfCreatesWithTags()
+    {
+        var tags = new List<string> { "tag1", "tag2" };
+        var datasetCase = DatasetCase.Of("input", "expected", tags);
+
+        Assert.Equal("input", datasetCase.Input);
+        Assert.Equal("expected", datasetCase.Expected);
+        Assert.Equal(tags, datasetCase.Tags);
+        Assert.Empty(datasetCase.Metadata);
+    }
+
+    [Fact]
+    public void DatasetCaseOfCreatesWithTagsAndMetadata()
+    {
+        var tags = new List<string> { "production", "high-priority" };
+        var metadata = new Dictionary<string, object>
+        {
+            { "user_id", "user-123" },
+            { "model", "gpt-4" },
+            { "temperature", 0.7 }
+        };
+
+        var datasetCase = DatasetCase.Of("input", "expected", tags, metadata);
+
+        Assert.Equal("input", datasetCase.Input);
+        Assert.Equal("expected", datasetCase.Expected);
+        Assert.Equal(tags, datasetCase.Tags);
+        Assert.Equal(metadata, datasetCase.Metadata);
+    }
+
+    [Fact]
+    public async Task EvalWithTagsAndMetadataBuildsAndRuns()
+    {
+        // Arrange
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var tags = new List<string> { "test-tag", "fruit-test" };
+        var metadata = new Dictionary<string, object>
+        {
+            { "category", "food" },
+            { "priority", 1 }
+        };
+
+        var cases = new DatasetCase<string, string>[]
+        {
+            DatasetCase.Of("strawberry", "fruit", tags, metadata),
+            DatasetCase.Of("asparagus", "vegetable", new List<string> { "veggie-test" }, new Dictionary<string, object> { { "category", "vegetable" } })
+        };
+
+        // Act
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-with-tags")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(cases)
+            .TaskFunction(food => "fruit")
+            .Scorers(
+                new FunctionScorer<string, string>("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0)
+            )
+            .BuildAsync();
+
+        var result = await eval.RunAsync();
+
+        // Assert
+        Assert.NotNull(result.ExperimentUrl);
+        Assert.Contains("test-eval-with-tags", result.ExperimentUrl);
+    }
+
+    [Fact]
+    public async Task EvalWithExperimentLevelTagsAndMetadataBuildsAndRuns()
+    {
+        // Arrange
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var experimentTags = new[] { "experiment-tag", "dotnet-sdk", "v1" };
+        var experimentMetadata = new Dictionary<string, object>
+        {
+            { "model", "gpt-4o-mini" },
+            { "description", "Test experiment with tags and metadata" },
+            { "version", 1.0 }
+        };
+
+        var cases = new DatasetCase<string, string>[]
+        {
+            DatasetCase.Of("strawberry", "fruit"),
+            DatasetCase.Of("asparagus", "vegetable")
+        };
+
+        // Act
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-with-experiment-metadata")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(cases)
+            .TaskFunction(food => "fruit")
+            .Tags(experimentTags)
+            .Metadata(experimentMetadata)
+            .Scorers(
+                new FunctionScorer<string, string>("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0)
+            )
+            .BuildAsync();
+
+        var result = await eval.RunAsync();
+
+        // Assert
+        Assert.NotNull(result.ExperimentUrl);
+        Assert.Contains("test-eval-with-experiment-metadata", result.ExperimentUrl);
+
+        // Verify the mock client received the tags and metadata
+        var lastRequest = mockClient.LastCreateExperimentRequest;
+        Assert.NotNull(lastRequest);
+        Assert.NotNull(lastRequest.Tags);
+        Assert.Equal(3, lastRequest.Tags.Count);
+        Assert.Contains("experiment-tag", lastRequest.Tags);
+        Assert.NotNull(lastRequest.Metadata);
+        Assert.Equal("gpt-4o-mini", lastRequest.Metadata["model"]);
+    }
+
+    [Fact]
     public void ScorerCreatesValidScore()
     {
         var scorer = new FunctionScorer<string, string>("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
