@@ -51,7 +51,7 @@
       <BraintrustSdkVersion Condition="'$(CurrentTagExitCode)' != '0' and '$(MostRecentTagExitCode)' == '0'">$(CleanMostRecentTag)-$(GitSha)</BraintrustSdkVersion>
       <!-- If no tags at all, use 0.0.0-dev-sha format for NuGet compatibility -->
       <BraintrustSdkVersion Condition="'$(CurrentTagExitCode)' != '0' and '$(MostRecentTagExitCode)' != '0'">0.0.0-dev-$(GitSha)</BraintrustSdkVersion>
-      <!-- Append -dirty if workspace is not clean (use dot for prerelease component) -->
+      <!-- Append -dirty if workspace is not clean -->
       <BraintrustSdkVersion Condition="'$(IsDirty)' == 'true'">$(BraintrustSdkVersion)-dirty</BraintrustSdkVersion>
 
       <!-- Fallback to "0.0.0-unknown" if git is not available -->
