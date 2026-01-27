@@ -19,7 +19,7 @@ class Program
             return;
         }
 
-        var braintrust = Braintrust.Get();
+        var braintrust = Braintrust.Get(BraintrustConfig.Of("BRAINTRUST_DEFAULT_PROJECT_NAME", "foobar"));
         var activitySource = braintrust.GetActivitySource();
         OpenAIClient openAIClient = BraintrustOpenAI.WrapOpenAI(activitySource, openAIApiKey);
 
