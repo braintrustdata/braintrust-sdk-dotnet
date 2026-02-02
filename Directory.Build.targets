@@ -51,8 +51,8 @@
       <BraintrustSdkVersion Condition="'$(CurrentTagExitCode)' != '0' and '$(MostRecentTagExitCode)' == '0'">$(CleanMostRecentTag)-$(GitSha)</BraintrustSdkVersion>
       <!-- If no tags at all, use 0.0.0-dev-sha format for NuGet compatibility -->
       <BraintrustSdkVersion Condition="'$(CurrentTagExitCode)' != '0' and '$(MostRecentTagExitCode)' != '0'">0.0.0-dev-$(GitSha)</BraintrustSdkVersion>
-      <!-- Append .dirty if workspace is not clean (use dot for prerelease component) -->
-      <BraintrustSdkVersion Condition="'$(IsDirty)' == 'true'">$(BraintrustSdkVersion).dirty</BraintrustSdkVersion>
+      <!-- Append -dirty if workspace is not clean -->
+      <BraintrustSdkVersion Condition="'$(IsDirty)' == 'true'">$(BraintrustSdkVersion)-dirty</BraintrustSdkVersion>
 
       <!-- Fallback to "0.0.0-unknown" if git is not available -->
       <BraintrustSdkVersion Condition="'$(GitShaExitCode)' != '0'">0.0.0-unknown</BraintrustSdkVersion>
@@ -130,7 +130,7 @@
       <ExpectedSdkVersion Condition="'$(VerifyCurrentTagExitCode)' == '0'">$(VerifyCleanCurrentTag)</ExpectedSdkVersion>
       <ExpectedSdkVersion Condition="'$(VerifyCurrentTagExitCode)' != '0' and '$(VerifyMostRecentTagExitCode)' == '0'">$(VerifyCleanMostRecentTag)-$(VerifyGitSha)</ExpectedSdkVersion>
       <ExpectedSdkVersion Condition="'$(VerifyCurrentTagExitCode)' != '0' and '$(VerifyMostRecentTagExitCode)' != '0'">0.0.0-dev-$(VerifyGitSha)</ExpectedSdkVersion>
-      <ExpectedSdkVersion Condition="'$(VerifyIsDirty)' == 'true'">$(ExpectedSdkVersion).dirty</ExpectedSdkVersion>
+      <ExpectedSdkVersion Condition="'$(VerifyIsDirty)' == 'true'">$(ExpectedSdkVersion)-dirty</ExpectedSdkVersion>
     </PropertyGroup>
 
     <!-- Create a small verification script -->
