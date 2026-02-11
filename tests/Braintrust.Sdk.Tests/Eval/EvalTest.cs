@@ -259,7 +259,7 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
-    public void ScorerCreatesValidScore()
+    public async Task ScorerCreatesValidScore()
     {
         var scorer = new FunctionScorer<string, string>("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
         var taskResult = new TaskResult<string, string>(
@@ -267,7 +267,7 @@ public class EvalTest : IDisposable
             DatasetCase.Of("input", "expected")
         );
 
-        var scores = scorer.Score(taskResult);
+        var scores = await scorer.Score(taskResult);
 
         Assert.Single(scores);
         Assert.Equal("test_scorer", scores[0].Name);

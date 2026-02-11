@@ -17,5 +17,5 @@ public interface IScorer<TInput, TOutput>
     /// <summary>
     /// Score the task result and return one or more scores.
     /// </summary>
-    IReadOnlyList<Score> Score(TaskResult<TInput, TOutput> taskResult);
+    Task<IReadOnlyList<Score>> Score(TaskResult<TInput, TOutput> taskResult);
 }

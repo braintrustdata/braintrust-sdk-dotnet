@@ -1,7 +1,7 @@
 namespace Braintrust.Sdk.Eval;
 
 /// <summary>
-/// Implementation of a scorer from a function.
+/// Implementation of a scorer from a synchronous function.
 /// </summary>
 public class FunctionScorer<TInput, TOutput> : IScorer<TInput, TOutput>
     where TInput : notnull
@@ -17,8 +17,33 @@ public class FunctionScorer<TInput, TOutput> : IScorer<TInput, TOutput>
 
     public string Name { get; }
 
-    public IReadOnlyList<Score> Score(TaskResult<TInput, TOutput> taskResult)
+    public Task<IReadOnlyList<Score>> Score(TaskResult<TInput, TOutput> taskResult)
     {
-        return [new Score(Name, _scorerFn(taskResult.DatasetCase.Expected, taskResult.Result))];
+        IReadOnlyList<Score> scores = [new Score(Name, _scorerFn(taskResult.DatasetCase.Expected, taskResult.Result))];
+        return Task.FromResult(scores);
+    }
+}
+
+/// <summary>
+/// Implementation of a scorer from an asynchronous function.
+/// </summary>
+public class AsyncFunctionScorer<TInput, TOutput> : IScorer<TInput, TOutput>
+    where TInput : notnull
+    where TOutput : notnull
+{
+    private readonly Func<TOutput, TOutput, Task<double>> _scorerFn;
+
+    public AsyncFunctionScorer(string name, Func<TOutput, TOutput, Task<double>> scorerFn)
+    {
+        Name = name;
+        _scorerFn = scorerFn;
+    }
+
+    public string Name { get; }
+
+    public async Task<IReadOnlyList<Score>> Score(TaskResult<TInput, TOutput> taskResult)
+    {
+        var score = await _scorerFn(taskResult.DatasetCase.Expected, taskResult.Result).ConfigureAwait(false);
+        return [new Score(Name, score)];
     }
 }
