@@ -64,14 +64,14 @@ public sealed class Eval<TInput, TOutput>
 
         await foreach (var datasetCase in _dataset.GetCasesAsync())
         {
-            EvalOne(experimentId, datasetCase);
+            await EvalOne(experimentId, datasetCase).ConfigureAwait(false);
         }
 
         var experimentUrl = CreateExperimentUrl(_config.AppUrl, _orgAndProject, _experimentName);
         return new EvalResult(experimentUrl);
     }
 
-    private void EvalOne(string experimentId, DatasetCase<TInput, TOutput> datasetCase)
+    private async Task EvalOne(string experimentId, DatasetCase<TInput, TOutput> datasetCase)
     {
         // Create root span for this eval case (no parent - each eval case is its own trace)
         using var rootActivity = _activitySource.StartActivity(
@@ -113,7 +113,7 @@ public sealed class Eval<TInput, TOutput>
                 try
                 {
                     using var taskScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
-                    taskResult = _task.Apply(datasetCase);
+                    taskResult = await _task.Apply(datasetCase).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -137,7 +137,7 @@ public sealed class Eval<TInput, TOutput>
                     var nameToScore = new Dictionary<string, double>();
                     foreach (var scorer in _scorers)
                     {
-                        var scores = scorer.Score(taskResult);
+                        var scores = await scorer.Score(taskResult).ConfigureAwait(false);
                         foreach (var score in scores)
                         {
                             if (score.Value < 0.0 || score.Value > 1.0)
@@ -327,11 +327,20 @@ public sealed class Eval<TInput, TOutput>
         }
 
         /// <summary>
-        /// Set the task from a function that takes input and returns output.
+        /// Set the task from a synchronous function that takes input and returns output.
         /// </summary>
         public Builder TaskFunction(Func<TInput, TOutput> taskFn)
         {
-            _task = new FunctionTask(taskFn);
+            _task = new SyncFunctionTask(taskFn);
+            return this;
+        }
+
+        /// <summary>
+        /// Set the task from an asynchronous function that takes input and returns output.
+        /// </summary>
+        public Builder TaskFunction(Func<TInput, Task<TOutput>> taskFn)
+        {
+            _task = new AsyncFunctionTask(taskFn);
             return this;
         }
 
@@ -383,21 +392,37 @@ public sealed class Eval<TInput, TOutput>
             _experimentMetadata = new Dictionary<string, object>(metadata);
             return this;
         }
+    }
 
-        private class FunctionTask : ITask<TInput, TOutput>
+    private class SyncFunctionTask : ITask<TInput, TOutput>
+    {
+        private readonly Func<TInput, TOutput> _taskFn;
+
+        public SyncFunctionTask(Func<TInput, TOutput> taskFn)
         {
-            private readonly Func<TInput, TOutput> _taskFn;
+            _taskFn = taskFn;
+        }
 
-            public FunctionTask(Func<TInput, TOutput> taskFn)
-            {
-                _taskFn = taskFn;
-            }
+        public Task<TaskResult<TInput, TOutput>> Apply(DatasetCase<TInput, TOutput> datasetCase)
+        {
+            var result = _taskFn(datasetCase.Input);
+            return Task.FromResult(new TaskResult<TInput, TOutput>(result, datasetCase));
+        }
+    }
 
-            public TaskResult<TInput, TOutput> Apply(DatasetCase<TInput, TOutput> datasetCase)
-            {
-                var result = _taskFn(datasetCase.Input);
-                return new TaskResult<TInput, TOutput>(result, datasetCase);
-            }
+    private class AsyncFunctionTask : ITask<TInput, TOutput>
+    {
+        private readonly Func<TInput, Task<TOutput>> _taskFn;
+
+        public AsyncFunctionTask(Func<TInput, Task<TOutput>> taskFn)
+        {
+            _taskFn = taskFn;
+        }
+
+        public async Task<TaskResult<TInput, TOutput>> Apply(DatasetCase<TInput, TOutput> datasetCase)
+        {
+            var result = await _taskFn(datasetCase.Input).ConfigureAwait(false);
+            return new TaskResult<TInput, TOutput>(result, datasetCase);
         }
     }
 }

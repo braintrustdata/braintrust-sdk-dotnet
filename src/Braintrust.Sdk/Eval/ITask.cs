@@ -12,5 +12,5 @@ public interface ITask<TInput, TOutput>
     /// <summary>
     /// Apply the task to a dataset case and return the result.
     /// </summary>
-    TaskResult<TInput, TOutput> Apply(DatasetCase<TInput, TOutput> datasetCase);
+    Task<TaskResult<TInput, TOutput>> Apply(DatasetCase<TInput, TOutput> datasetCase);
 }
