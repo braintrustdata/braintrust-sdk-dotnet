@@ -299,4 +299,71 @@ public class EvalTest : IDisposable
         Assert.NotNull(case2);
         Assert.Equal("input2", case2.Input);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(-100)]
+    public void MaxConcurrencyRejectsInvalidValues(int invalidValue)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Eval<string, string>.NewBuilder()
+                .MaxConcurrency(invalidValue));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(100)]
+    public void MaxConcurrencyAcceptsValidValues(int validValue)
+    {
+        var builder = Eval<string, string>.NewBuilder()
+            .MaxConcurrency(validValue);
+        Assert.NotNull(builder);
+    }
+
+    [Fact]
+    public void MaxConcurrencyAcceptsNull()
+    {
+        var builder = Eval<string, string>.NewBuilder()
+            .MaxConcurrency(null);
+        Assert.NotNull(builder);
+    }
+
+    [Fact]
+    public async Task EvalWithMaxConcurrencyBuildsAndRuns()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var cases = new DatasetCase<string, string>[]
+        {
+            new("strawberry", "fruit"),
+            new("asparagus", "vegetable"),
+            new("banana", "fruit"),
+            new("carrot", "vegetable")
+        };
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-with-concurrency")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(cases)
+            .TaskFunction(food => "fruit")
+            .MaxConcurrency(2)
+            .Scorers(
+                new FunctionScorer<string, string>("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0)
+            )
+            .BuildAsync();
+
+        var result = await eval.RunAsync();
+
+        Assert.NotNull(result.ExperimentUrl);
+        Assert.Contains("test-eval-with-concurrency", result.ExperimentUrl);
+    }
 }

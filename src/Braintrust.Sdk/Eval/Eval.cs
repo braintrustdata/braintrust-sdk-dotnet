@@ -31,6 +31,7 @@ public sealed class Eval<TInput, TOutput>
     private readonly IReadOnlyList<IScorer<TInput, TOutput>> _scorers;
     private readonly IReadOnlyList<string>? _experimentTags;
     private readonly IReadOnlyDictionary<string, object>? _experimentMetadata;
+    private readonly int? _maxConcurrency;
 
     private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject)
     {
@@ -45,6 +46,7 @@ public sealed class Eval<TInput, TOutput>
         _scorers = builder._scorers.ToList();
         _experimentTags = builder._experimentTags;
         _experimentMetadata = builder._experimentMetadata;
+        _maxConcurrency = builder._maxConcurrency;
     }
 
     /// <summary>
@@ -62,9 +64,36 @@ public sealed class Eval<TInput, TOutput>
 
         var experimentId = experiment.Id;
 
+        // Collect all cases first to enable parallel execution
+        var cases = new List<DatasetCase<TInput, TOutput>>();
         await foreach (var datasetCase in _dataset.GetCasesAsync())
         {
-            await EvalOne(experimentId, datasetCase).ConfigureAwait(false);
+            cases.Add(datasetCase);
+        }
+
+        // Run cases in parallel with optional concurrency limit
+        if (_maxConcurrency.HasValue)
+        {
+            using var semaphore = new SemaphoreSlim(_maxConcurrency.Value);
+            var tasks = cases.Select(async datasetCase =>
+            {
+                await semaphore.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    await EvalOne(experimentId, datasetCase).ConfigureAwait(false);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        else
+        {
+            // Unlimited parallelism (default, matches TS/Python behavior)
+            var tasks = cases.Select(datasetCase => EvalOne(experimentId, datasetCase));
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
         var experimentUrl = CreateExperimentUrl(_config.AppUrl, _orgAndProject, _experimentName);
@@ -123,7 +152,7 @@ public sealed class Eval<TInput, TOutput>
                 rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult.Result }));
             }
 
-            // Run scorers
+            // Run scorers in parallel
             {
                 using var scoreActivity = _activitySource.StartActivity("score");
                 scoreActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
@@ -133,17 +162,24 @@ public sealed class Eval<TInput, TOutput>
                 {
                     using var scoreScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
 
-                    // Linked dictionary to preserve ordering
-                    var nameToScore = new Dictionary<string, double>();
-                    foreach (var scorer in _scorers)
+                    // Run all scorers in parallel
+                    var scorerTasks = _scorers.Select(async scorer =>
                     {
                         var scores = await scorer.Score(taskResult).ConfigureAwait(false);
+                        return (scorer.Name, Scores: scores);
+                    });
+
+                    var scorerResults = await Task.WhenAll(scorerTasks).ConfigureAwait(false);
+
+                    var nameToScore = new Dictionary<string, double>();
+                    foreach (var (scorerName, scores) in scorerResults)
+                    {
                         foreach (var score in scores)
                         {
                             if (score.Value < 0.0 || score.Value > 1.0)
                             {
                                 throw new InvalidOperationException(
-                                    $"Score must be between 0 and 1: {scorer.Name} : {score}");
+                                    $"Score must be between 0 and 1: {scorerName} : {score}");
                             }
                             nameToScore[score.Name] = score.Value;
                         }
@@ -209,6 +245,7 @@ public sealed class Eval<TInput, TOutput>
         internal List<IScorer<TInput, TOutput>> _scorers = new();
         internal IReadOnlyList<string>? _experimentTags;
         internal IReadOnlyDictionary<string, object>? _experimentMetadata;
+        internal int? _maxConcurrency;
 
         /// <summary>
         /// Build the Eval instance.
@@ -390,6 +427,23 @@ public sealed class Eval<TInput, TOutput>
         public Builder Metadata(Dictionary<string, object> metadata)
         {
             _experimentMetadata = new Dictionary<string, object>(metadata);
+            return this;
+        }
+
+        /// <summary>
+        /// Set the maximum number of cases that will be evaluated concurrently.
+        /// If not set (or set to null), all cases run in parallel (unlimited concurrency).
+        /// </summary>
+        public Builder MaxConcurrency(int? maxConcurrency)
+        {
+            if (maxConcurrency.HasValue && maxConcurrency.Value <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(maxConcurrency),
+                    maxConcurrency.Value,
+                    "MaxConcurrency must be greater than 0");
+            }
+            _maxConcurrency = maxConcurrency;
             return this;
         }
     }
