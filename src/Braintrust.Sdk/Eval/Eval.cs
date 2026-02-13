@@ -64,14 +64,13 @@ public sealed class Eval<TInput, TOutput>
 
         var experimentId = experiment.Id;
 
-        // Collect all cases first to enable parallel execution
         var cases = new List<DatasetCase<TInput, TOutput>>();
         await foreach (var datasetCase in _dataset.GetCasesAsync())
         {
             cases.Add(datasetCase);
         }
 
-        // Run cases in parallel with optional concurrency limit
+        // Run cases in parallel
         if (_maxConcurrency.HasValue)
         {
             using var semaphore = new SemaphoreSlim(_maxConcurrency.Value);
@@ -91,7 +90,7 @@ public sealed class Eval<TInput, TOutput>
         }
         else
         {
-            // Unlimited parallelism (default, matches TS/Python behavior)
+            // Unlimited parallelism
             var tasks = cases.Select(datasetCase => EvalOne(experimentId, datasetCase));
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
