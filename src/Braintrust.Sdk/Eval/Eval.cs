@@ -244,7 +244,7 @@ public sealed class Eval<TInput, TOutput>
         internal List<IScorer<TInput, TOutput>> _scorers = new();
         internal IReadOnlyList<string>? _experimentTags;
         internal IReadOnlyDictionary<string, object>? _experimentMetadata;
-        internal int? _maxConcurrency;
+        internal int? _maxConcurrency = 10;
 
         /// <summary>
         /// Build the Eval instance.
@@ -431,7 +431,7 @@ public sealed class Eval<TInput, TOutput>
 
         /// <summary>
         /// Set the maximum number of cases that will be evaluated concurrently.
-        /// If not set (or set to null), all cases run in parallel (unlimited concurrency).
+        /// Defaults to 10. Set to null for unlimited concurrency.
         /// </summary>
         public Builder MaxConcurrency(int? maxConcurrency)
         {
