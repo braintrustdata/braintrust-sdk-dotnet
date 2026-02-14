@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Version is determined dynamically from git state in Directory.Build.targets -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Braintrust.Sdk\Braintrust.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.5.0" />
+  </ItemGroup>
+
+</Project>
