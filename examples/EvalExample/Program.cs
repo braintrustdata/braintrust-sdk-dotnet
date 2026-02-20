@@ -21,7 +21,7 @@ class Program
         OpenAIClient openAIClient = BraintrustOpenAI.WrapOpenAI(activitySource, openAIApiKey);
 
         // Define the task function that uses OpenAI to classify food
-        string GetFoodType(string food)
+        async Task<string> GetFoodType(string food)
         {
             var chatClient = openAIClient.GetChatClient("gpt-4o-mini");
             var messages = new ChatMessage[]
@@ -36,7 +36,7 @@ class Program
                 Temperature = 0.0f
             };
 
-            var response = chatClient.CompleteChat(messages, options);
+            var response = await chatClient.CompleteChatAsync(messages, options);
             return response.Value.Content[0].Text.ToLower();
         }
 
