@@ -19,7 +19,9 @@ internal class DatasetInMemoryImpl<TInput, TOutput> : IDataset<TInput, TOutput>
 
     public string Version => "0";
 
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
     public async IAsyncEnumerable<DatasetCase<TInput, TOutput>> GetCasesAsync()
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
     {
         foreach (var item in _cases)
         {
