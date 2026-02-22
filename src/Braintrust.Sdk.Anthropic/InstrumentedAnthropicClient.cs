@@ -67,13 +67,13 @@ public sealed class InstrumentedAnthropicClient : IAnthropicClient
         init => throw new NotSupportedException("Cannot set Timeout on instrumented client");
     }
 
-    public string ApiKey
+    public string? ApiKey
     {
         get => _client.ApiKey;
         init => throw new NotSupportedException("Cannot set ApiKey on instrumented client");
     }
 
-    public string AuthToken
+    public string? AuthToken
     {
         get => _client.AuthToken;
         init => throw new NotSupportedException("Cannot set AuthToken on instrumented client");
