@@ -13,6 +13,8 @@ namespace Braintrust.Sdk.Anthropic;
 /// </summary>
 public static class BraintrustAnthropic
 {
+    public delegate void SetOptions(ref ClientOptions options);
+
     /// <summary>
     /// Creates an instrumented Anthropic client with Braintrust traces.
     ///
@@ -26,7 +28,7 @@ public static class BraintrustAnthropic
     public static IAnthropicClient WrapAnthropic(
         ActivitySource activitySource,
         string anthropicApiKey,
-        Action<ClientOptions>? options = null)
+        SetOptions? options = null)
     {
         if (activitySource == null)
             throw new ArgumentNullException(nameof(activitySource));
@@ -39,7 +41,7 @@ public static class BraintrustAnthropic
         };
 
         // Apply any custom options
-        options?.Invoke(clientOptions);
+        options?.Invoke(ref clientOptions);
 
         var anthropicClient = new AnthropicClient(clientOptions);
 

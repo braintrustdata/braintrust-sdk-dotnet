@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using Anthropic;
+using Anthropic.Core;
+using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Trace;
@@ -72,7 +74,7 @@ public class BraintrustAnthropicTest : IDisposable
         var activitySource = BraintrustTracing.GetActivitySource();
         var httpClient = new HttpClient(handler);
 
-        return BraintrustAnthropic.WrapAnthropic(activitySource, "test-api-key", opts =>
+        return BraintrustAnthropic.WrapAnthropic(activitySource, "test-api-key", (ref ClientOptions opts) =>
         {
             opts.HttpClient = httpClient;
         });
@@ -199,7 +201,7 @@ public class BraintrustAnthropicTest : IDisposable
             }
         };
 
-        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        await Assert.ThrowsAsync<AnthropicIOException>(async () =>
         {
             await client.Messages.Create(request);
         });
@@ -313,7 +315,7 @@ public class BraintrustAnthropicTest : IDisposable
         };
 
         // Act & Assert
-        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        await Assert.ThrowsAsync<AnthropicIOException>(async () =>
         {
             await foreach (var _ in client.Messages.CreateStreaming(request))
             {
@@ -367,7 +369,7 @@ public class BraintrustAnthropicTest : IDisposable
         var handler = new MockAnthropicHandler("{}");
         var httpClient = new HttpClient(handler);
 
-        var client = BraintrustAnthropic.WrapAnthropic(activitySource, "test-api-key", opts =>
+        var client = BraintrustAnthropic.WrapAnthropic(activitySource, "test-api-key", (ref ClientOptions opts) =>
         {
             opts.HttpClient = httpClient;
         });

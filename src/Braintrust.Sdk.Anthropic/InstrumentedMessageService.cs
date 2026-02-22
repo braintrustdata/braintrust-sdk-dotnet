@@ -203,8 +203,8 @@ internal sealed class InstrumentedMessageService : IMessageService
         double? timeToFirstToken = null)
     {
         activity.SetTag("provider", "anthropic");
-        activity.SetTag("gen_ai.request.model", request.Model.Value());
-        activity.SetTag("gen_ai.response.model", response.Model.Value());
+        activity.SetTag("gen_ai.request.model", request.Model.Raw());
+        activity.SetTag("gen_ai.response.model", response.Model.Raw());
 
         try
         {
@@ -247,7 +247,7 @@ internal sealed class InstrumentedMessageService : IMessageService
     {
         activity.SetTag("stream", true);
         activity.SetTag("provider", "anthropic");
-        activity.SetTag("gen_ai.request.model", request.Model.Value());
+        activity.SetTag("gen_ai.request.model", request.Model.Raw());
 
         try
         {
