@@ -16,8 +16,8 @@ public static class BraintrustAnthropic
     /// <summary>
     /// Creates an instrumented Anthropic client with Braintrust traces.
     ///
-    /// This method creates a new Anthropic client with the provided configuration and injects
-    /// HTTP interception to capture request/response data for telemetry.
+    /// This method creates a new Anthropic client with the provided configuration and wraps it
+    /// with Braintrust telemetry to capture request/response and message data for telemetry.
     /// </summary>
     /// <param name="activitySource">The ActivitySource for creating spans</param>
     /// <param name="anthropicApiKey">The Anthropic API key</param>
