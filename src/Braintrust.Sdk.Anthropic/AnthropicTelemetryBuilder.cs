@@ -19,10 +19,10 @@ internal sealed class AnthropicTelemetryBuilder
     }
 
     /// <summary>
-    /// Sets whether to capture message content in telemetry spans.
+    /// Sets whether to capture the full content of user and assistant messages.
     ///
-    /// When enabled, the full request messages and response content will be
-    /// captured in span tags for debugging and analysis.
+    /// When enabled, complete message content will be included in telemetry.
+    /// Note that this may have data privacy and size implications, so use with care.
     /// </summary>
     /// <param name="capture">True to capture message content, false otherwise</param>
     /// <returns>This builder instance for method chaining</returns>

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Anthropic;
-using Anthropic.Helpers;
 using Anthropic.Models.Messages;
 using Braintrust.Sdk.Anthropic;
 

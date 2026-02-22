@@ -8,7 +8,7 @@ namespace Braintrust.Sdk.Anthropic;
 /// Instrumented wrapper that implements IAnthropicClient and delegates to a wrapped client.
 /// This ensures all calls go through our instrumented services.
 /// </summary>
-public sealed class InstrumentedAnthropicClient : IAnthropicClient
+internal sealed class InstrumentedAnthropicClient : IAnthropicClient
 {
     private readonly AnthropicClient _client;
     private readonly InstrumentedMessageService _instrumentedMessages;

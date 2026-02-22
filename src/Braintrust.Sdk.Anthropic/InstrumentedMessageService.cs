@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Anthropic.Models.Messages;
 using Anthropic.Services;
 using Anthropic.Services.Messages;
@@ -193,7 +192,8 @@ internal sealed class InstrumentedMessageService : IMessageService
     /// <inheritdoc/>
     public IMessageService WithOptions(Func<global::Anthropic.Core.ClientOptions, global::Anthropic.Core.ClientOptions> modifier)
     {
-        return _messages.WithOptions(modifier);
+        var modifiedMessages = _messages.WithOptions(modifier);
+        return new InstrumentedMessageService(modifiedMessages, _activitySource, _captureMessageContent);
     }
 
     private static void TagActivity(
