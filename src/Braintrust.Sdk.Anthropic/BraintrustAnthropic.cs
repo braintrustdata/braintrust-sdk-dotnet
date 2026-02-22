@@ -39,7 +39,7 @@ public static class BraintrustAnthropic
         };
 
         // Apply any custom options
-        options?.Invoke(clientOptions);        
+        options?.Invoke(clientOptions);
 
         var anthropicClient = new AnthropicClient(clientOptions);
 

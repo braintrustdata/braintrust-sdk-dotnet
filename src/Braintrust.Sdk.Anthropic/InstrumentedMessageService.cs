@@ -86,18 +86,16 @@ internal sealed class InstrumentedMessageService : IMessageService
         // Tag the activity with request info
         if (activity != null && _captureMessageContent)
         {
-            TagActivityWithRequest(activity, parameters);
+            TagStreamActivity(activity, parameters);
         }
 
-        StringBuilder? output = null;
+        StringBuilder? output = _captureMessageContent ? new() : null;
+        string? role = null;
 
-        if (_captureMessageContent)
-        {
-            output = new StringBuilder();
-        }
-
-        // Not using await foreach because we can't use yield return inside a try/catch, so we need to manually get the enumerator and loop
-        await using var enumerator = _messages.CreateStreaming(parameters, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        // Not using await foreach because we can't use yield return inside a try/catch,
+        // so we need to manually get the enumerator and loop
+        await using var enumerator = _messages.CreateStreaming(parameters, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
 
         while (true)
         {
@@ -132,10 +130,29 @@ internal sealed class InstrumentedMessageService : IMessageService
 
             if (output != null)
             {
-                if (streamEvent.TryPickContentBlockDelta(out var contentBlockDelta)
-                    && contentBlockDelta.Delta.TryPickText(out var textDelta))
+                if (streamEvent.TryPickStart(out var start))
                 {
-                    output.Append(textDelta.Text);
+                    activity?.SetTag("gen_ai.response.model", start.Message.Model);
+                    role = start.Message.Role.ToString();
+                }
+                else if (streamEvent.TryPickContentBlockDelta(out var contentBlockDelta))
+                {
+                    if (contentBlockDelta.Delta.TryPickText(out var textDelta))
+                    {
+                        output.Append(textDelta.Text);
+                    }
+                }
+                else if (streamEvent.TryPickDelta(out var delta))
+                {
+                    if (delta.Delta.StopSequence != null)
+                    {
+                        activity?.SetTag("stop_sequence", delta.Delta.StopSequence);
+                    }
+
+                    if (delta.Delta.StopReason != null)
+                    {
+                        activity?.SetTag("stop_reason", delta.Delta.StopReason);
+                    }
                 }
             }
 
@@ -143,15 +160,19 @@ internal sealed class InstrumentedMessageService : IMessageService
         }
 
         // Tag with timing after stream completes
-        if (activity != null && _captureMessageContent)
+        if (activity != null && output != null)
         {
             if (timeToFirstToken.HasValue)
             {
                 activity.SetTag("braintrust.metrics.time_to_first_token", timeToFirstToken.Value);
             }
 
-            // TODO: not actually JSON
-            activity.SetTag("braintrust.output_json", output?.ToString());
+            activity.SetTag(
+                "braintrust.output_json",
+                ToJson(new object[]
+                {
+                    new { role = role ?? "assistant", content = output.ToString() }
+                }));
         }
     }
 
@@ -190,7 +211,7 @@ internal sealed class InstrumentedMessageService : IMessageService
             var messagesJson = ToJson(request.Messages);
             activity.SetTag("braintrust.input_json", messagesJson);
 
-            var contentJson = ToJson(response.Content);
+            var contentJson = response.ToString();
             activity.SetTag("braintrust.output_json", contentJson);
 
             // Extract token usage metrics
@@ -222,8 +243,9 @@ internal sealed class InstrumentedMessageService : IMessageService
         }
     }
 
-    private static void TagActivityWithRequest(Activity activity, MessageCreateParams request)
+    private static void TagStreamActivity(Activity activity, MessageCreateParams request)
     {
+        activity.SetTag("stream", true);
         activity.SetTag("provider", "anthropic");
         activity.SetTag("gen_ai.request.model", request.Model.Value());
 

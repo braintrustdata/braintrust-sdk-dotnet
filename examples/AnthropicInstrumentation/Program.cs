@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Anthropic;
+using Anthropic.Helpers;
 using Anthropic.Models.Messages;
 using Braintrust.Sdk.Anthropic;
 
@@ -87,24 +88,20 @@ class Program
         var startTime = DateTime.UtcNow;
         int eventCount = 0;
 
-        await foreach (var streamEvent in anthropicClient.Messages.CreateStreaming(request))
+        await foreach (var rawEvent in anthropicClient.Messages.CreateStreaming(request))
         {
             eventCount++;
 
-            // RawMessageStreamEvent contains raw JSON data
-            // You can access the Type property to determine the event type
-            var eventType = streamEvent.Type.GetString();
-
-            // For demonstration, show a subset of events
-            if (eventCount <= 5 || eventType == "message_stop")
+            if (rawEvent.TryPickContentBlockDelta(out var delta))
             {
-                Console.WriteLine($"Event #{eventCount}: {eventType}");
-            }
-            else if (eventCount == 6)
-            {
-                Console.WriteLine("... (streaming content) ...");
+                if (delta.Delta.TryPickText(out var textDelta))
+                {
+                    Console.Write(textDelta.Text);
+                }
             }
         }
+
+        Console.WriteLine();
 
         var totalTime = DateTime.UtcNow - startTime;
         Console.WriteLine($"Total streaming time: {totalTime.TotalMilliseconds:F2}ms");
