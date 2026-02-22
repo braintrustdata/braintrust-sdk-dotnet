@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Braintrust.Sdk.Anthropic.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Braintrust.Sdk\Braintrust.Sdk.csproj" />
   </ItemGroup>
 

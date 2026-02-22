@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Braintrust.Sdk.Tests" />
+    <InternalsVisibleTo Include="Braintrust.Sdk.Anthropic.Tests" />
   </ItemGroup>
 
   <ItemGroup>
