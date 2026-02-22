@@ -9,7 +9,7 @@ namespace Braintrust.Sdk.Anthropic;
 /// This class provides the main API for wrapping Anthropic clients with telemetry.
 /// It can be created directly via Create() or configured via the Builder pattern.
 /// </summary>
-public sealed class AnthropicTelemetry
+internal sealed class AnthropicTelemetry
 {
     private readonly ActivitySource _activitySource;
     private readonly bool _captureMessageContent;

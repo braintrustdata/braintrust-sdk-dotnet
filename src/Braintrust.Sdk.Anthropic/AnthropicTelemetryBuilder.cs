@@ -8,7 +8,7 @@ namespace Braintrust.Sdk.Anthropic;
 /// This builder provides a fluent API for configuring telemetry settings
 /// before wrapping an Anthropic client.
 /// </summary>
-public sealed class AnthropicTelemetryBuilder
+internal sealed class AnthropicTelemetryBuilder
 {
     private readonly ActivitySource _activitySource;
     private bool _captureMessageContent = true;
