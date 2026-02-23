@@ -7,7 +7,7 @@ using OpenAI.Files;
 using OpenAI.Images;
 using OpenAI.Moderations;
 
-namespace Braintrust.Sdk.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI;
 
 /// <summary>
 /// Decorator wrapper for OpenAIClient that adds telemetry instrumentation.

@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Nodes;
 using Braintrust.Sdk.Config;
-using Braintrust.Sdk.Instrumentation.OpenAI;
+using Braintrust.Sdk.OpenAI;
 using Braintrust.Sdk.Trace;
 using OpenAI;
 using OpenAI.Chat;
@@ -12,7 +12,7 @@ using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace Braintrust.Sdk.Tests.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI.Tests;
 
 /// <summary>
 /// Tests for OpenAI instrumentation.

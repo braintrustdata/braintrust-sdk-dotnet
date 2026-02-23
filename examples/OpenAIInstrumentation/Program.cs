@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Braintrust.Sdk;
-using Braintrust.Sdk.Instrumentation.OpenAI;
+using Braintrust.Sdk.OpenAI;
 using OpenAI;
 using OpenAI.Chat;
 

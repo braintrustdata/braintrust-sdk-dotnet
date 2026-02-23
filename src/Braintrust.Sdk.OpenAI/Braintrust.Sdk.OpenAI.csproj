@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Braintrust.Sdk.Anthropic.Tests" />
+    <InternalsVisibleTo Include="Braintrust.Sdk.OpenAI.Tests" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Anthropic" Version="12.5.0" />
+    <PackageReference Include="OpenAI" Version="2.6.0" />
   </ItemGroup>
 
 </Project>

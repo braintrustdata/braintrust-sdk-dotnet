@@ -3,7 +3,7 @@ using System.ClientModel.Primitives;
 using System.Diagnostics;
 using OpenAI;
 
-namespace Braintrust.Sdk.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI;
 
 /// <summary>
 /// Braintrust OpenAI client instrumentation.

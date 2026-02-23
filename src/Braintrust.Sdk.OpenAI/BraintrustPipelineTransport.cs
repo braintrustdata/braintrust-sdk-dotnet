@@ -2,7 +2,7 @@ using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Diagnostics;
 
-namespace Braintrust.Sdk.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI;
 
 /// <summary>
 /// Pipeline transport wrapper that captures request and response bodies for telemetry.
