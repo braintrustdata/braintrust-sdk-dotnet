@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 using OpenAI.Chat;
 using OpenTelemetry.Trace;
 
-namespace Braintrust.Sdk.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI;
 
 /// <summary>
 /// Decorator wrapper for ChatClient that adds telemetry instrumentation.

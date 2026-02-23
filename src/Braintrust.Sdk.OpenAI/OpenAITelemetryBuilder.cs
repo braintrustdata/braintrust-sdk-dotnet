@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Braintrust.Sdk.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI;
 
 /// <summary>
 /// Builder for configuring OpenAI telemetry instrumentation.

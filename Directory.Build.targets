@@ -75,7 +75,7 @@
     <Message Text="Generated Braintrust SDK version: $(BraintrustSdkVersion)" Importance="high" />
 
     <!-- Set the Version property for NuGet packaging -->
-    <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk'">
+    <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.OpenAI' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.Anthropic'">
       <Version>$(BraintrustSdkVersion)</Version>
       <PackageVersion>$(BraintrustSdkVersion)</PackageVersion>
     </PropertyGroup>
