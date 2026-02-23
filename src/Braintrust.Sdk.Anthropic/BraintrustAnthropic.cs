@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Anthropic;
-using Anthropic.Core;
 
 namespace Braintrust.Sdk.Anthropic;
 
@@ -13,41 +12,46 @@ namespace Braintrust.Sdk.Anthropic;
 /// </summary>
 public static class BraintrustAnthropic
 {
-    public delegate void SetOptions(ref ClientOptions options);
+    /// <summary>
+    /// Instrument an Anthropic client with Braintrust traces.
+    ///
+    /// This method wraps an Anthropic client with Braintrust telemetry
+    /// to capture request/response and message data for telemetry.
+    /// </summary>
+    /// <param name="client">The Anthropic client to instrument</param>
+    /// <param name="captureMessageContent">Whether to capture message content in telemetry (default: true)</param>
+    /// <returns>An instrumented Anthropic client that will emit telemetry</returns>
+    public static IAnthropicClient WithBraintrust(
+        this IAnthropicClient client,
+        bool captureMessageContent = true)
+    {
+        var braintrust = Braintrust.Get();
+        var activitySource = braintrust.GetActivitySource();
+        return client.WithBraintrust(activitySource, captureMessageContent);
+    }
 
     /// <summary>
-    /// Creates an instrumented Anthropic client with Braintrust traces.
+    /// Instrument an Anthropic client with Braintrust traces.
     ///
-    /// This method creates a new Anthropic client with the provided configuration and wraps it
-    /// with Braintrust telemetry to capture request/response and message data for telemetry.
+    /// This method wraps an Anthropic client with Braintrust telemetry
+    /// to capture request/response and message data for telemetry.
     /// </summary>
+    /// <param name="client">The Anthropic client to instrument</param>
     /// <param name="activitySource">The ActivitySource for creating spans</param>
-    /// <param name="anthropicApiKey">The Anthropic API key</param>
-    /// <param name="options">Optional client options for custom configuration</param>
+    /// <param name="captureMessageContent">Whether to capture message content in telemetry (default: true)</param>
     /// <returns>An instrumented Anthropic client that will emit telemetry</returns>
-    public static IAnthropicClient WrapAnthropic(
+    public static IAnthropicClient WithBraintrust(
+        this IAnthropicClient client,
         ActivitySource activitySource,
-        string anthropicApiKey,
-        SetOptions? options = null)
+        bool captureMessageContent = true)
     {
+        if (client == null)
+            throw new ArgumentNullException(nameof(client));
         if (activitySource == null)
             throw new ArgumentNullException(nameof(activitySource));
-        if (string.IsNullOrEmpty(anthropicApiKey))
-            throw new ArgumentNullException(nameof(anthropicApiKey));
-
-        var clientOptions = new ClientOptions
-        {
-            ApiKey = anthropicApiKey
-        };
-
-        // Apply any custom options
-        options?.Invoke(ref clientOptions);
-
-        var anthropicClient = new AnthropicClient(clientOptions);
-
         return AnthropicTelemetry.Builder(activitySource)
-            .SetCaptureMessageContent(true)
+            .SetCaptureMessageContent(captureMessageContent)
             .Build()
-            .Wrap(anthropicClient);
+            .Wrap((AnthropicClient)client);
     }
 }

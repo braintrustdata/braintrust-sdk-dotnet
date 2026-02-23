@@ -10,19 +10,21 @@ namespace Braintrust.Sdk.Examples.AnthropicInstrumentation;
 /// </summary>
 class Program
 {
-    static async Task Main(string[] args)
+    static async Task Main()
     {
-        // Check for API key
-        var anthropicApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-        if (string.IsNullOrEmpty(anthropicApiKey))
-        {
-            Console.WriteLine("ERROR: ANTHROPIC_API_KEY environment variable not set. Bailing.");
-            return;
-        }
-
         var braintrust = Braintrust.Get();
         var activitySource = braintrust.GetActivitySource();
-        var instrumentedClient = BraintrustAnthropic.WrapAnthropic(activitySource, anthropicApiKey);
+
+        // Create an Anthropic client as you normally would
+        var anthropicClient = new AnthropicClient();
+
+        // Wrap the client with instrumentation using the Braintrust ActivitySource
+        // The instrumented client disposes the underlying client when disposed
+        using var instrumentedClient = anthropicClient.WithBraintrust(activitySource);
+
+        // Alternatively, you can let Braintrust manage the ActivitySource for you when creating the client,
+        // but make sure Brainstrust is properly configured first
+        // var instrumentedClient = anthropicClient.WithBraintrust();
 
         using (var rootActivity = activitySource.StartActivity("anthropic-dotnet-instrumentation-example"))
         {

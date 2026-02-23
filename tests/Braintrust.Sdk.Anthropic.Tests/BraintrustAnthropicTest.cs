@@ -6,7 +6,6 @@ using Anthropic.Core;
 using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using Braintrust.Sdk.Config;
-using Braintrust.Sdk.Trace;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -29,13 +28,14 @@ public class BraintrustAnthropicTest : IDisposable
     {
         Braintrust.ResetForTest();
 
-        _exportedSpans = new List<Activity>();
+        _exportedSpans = [];
 
         _activityListener = new ActivityListener
         {
             ShouldListenTo = source => source.Name == "braintrust-dotnet",
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded
         };
+
         ActivitySource.AddActivityListener(_activityListener);
     }
 
@@ -47,7 +47,7 @@ public class BraintrustAnthropicTest : IDisposable
             _tracerProvider.Dispose();
         }
 
-        _activityListener?.Dispose();
+        _activityListener.Dispose();
         Braintrust.ResetForTest();
         _exportedSpans.Clear();
     }
@@ -71,13 +71,8 @@ public class BraintrustAnthropicTest : IDisposable
 
     private IAnthropicClient CreateInstrumentedClient(MockAnthropicHandler handler)
     {
-        var activitySource = BraintrustTracing.GetActivitySource();
-        var httpClient = new HttpClient(handler);
-
-        return BraintrustAnthropic.WrapAnthropic(activitySource, "test-api-key", (ref ClientOptions opts) =>
-        {
-            opts.HttpClient = httpClient;
-        });
+        var clientOptions = new ClientOptions { HttpClient = new HttpClient(handler) };
+        return new AnthropicClient(clientOptions).WithBraintrust();
     }
 
     [Fact]
@@ -108,8 +103,8 @@ public class BraintrustAnthropicTest : IDisposable
             }
             """;
 
-        var handler = new MockAnthropicHandler(mockResponse);
-        var client = CreateInstrumentedClient(handler);
+        using var handler = new MockAnthropicHandler(mockResponse);
+        using var client = CreateInstrumentedClient(handler);
 
         // Act
         var request = new MessageCreateParams
@@ -183,8 +178,8 @@ public class BraintrustAnthropicTest : IDisposable
         SetupOpenTelemetry();
         _exportedSpans.Clear();
 
-        var handler = new MockAnthropicHandler(shouldThrow: true);
-        var client = CreateInstrumentedClient(handler);
+        using var handler = new MockAnthropicHandler(shouldThrow: true);
+        using var client = CreateInstrumentedClient(handler);
 
         // Act & Assert
         var request = new MessageCreateParams
@@ -234,8 +229,8 @@ public class BraintrustAnthropicTest : IDisposable
             ("message_stop", """{"type":"message_stop"}""")
         );
 
-        var handler = new MockAnthropicHandler(sseResponse, contentType: "text/event-stream");
-        var client = CreateInstrumentedClient(handler);
+        using var handler = new MockAnthropicHandler(sseResponse, contentType: "text/event-stream");
+        using var client = CreateInstrumentedClient(handler);
 
         // Act
         var request = new MessageCreateParams
@@ -297,8 +292,8 @@ public class BraintrustAnthropicTest : IDisposable
         SetupOpenTelemetry();
         _exportedSpans.Clear();
 
-        var handler = new MockAnthropicHandler(shouldThrow: true);
-        var client = CreateInstrumentedClient(handler);
+        using var handler = new MockAnthropicHandler(shouldThrow: true);
+        using var client = CreateInstrumentedClient(handler);
 
         var request = new MessageCreateParams
         {
@@ -337,27 +332,8 @@ public class BraintrustAnthropicTest : IDisposable
     {
         Assert.Throws<ArgumentNullException>(() =>
         {
-            BraintrustAnthropic.WrapAnthropic(null!, "test-api-key");
-        });
-    }
-
-    [Fact]
-    public void WrapAnthropic_ThrowsOnNullApiKey()
-    {
-        var activitySource = BraintrustTracing.GetActivitySource();
-        Assert.Throws<ArgumentNullException>(() =>
-        {
-            BraintrustAnthropic.WrapAnthropic(activitySource, null!);
-        });
-    }
-
-    [Fact]
-    public void WrapAnthropic_ThrowsOnEmptyApiKey()
-    {
-        var activitySource = BraintrustTracing.GetActivitySource();
-        Assert.Throws<ArgumentNullException>(() =>
-        {
-            BraintrustAnthropic.WrapAnthropic(activitySource, "");
+            using var anthropicClient = new AnthropicClient();
+            anthropicClient.WithBraintrust(null!);
         });
     }
 
@@ -365,14 +341,9 @@ public class BraintrustAnthropicTest : IDisposable
     public void WrapAnthropic_ReturnsInstrumentedClient()
     {
         SetupOpenTelemetry();
-        var activitySource = BraintrustTracing.GetActivitySource();
-        var handler = new MockAnthropicHandler("{}");
-        var httpClient = new HttpClient(handler);
-
-        var client = BraintrustAnthropic.WrapAnthropic(activitySource, "test-api-key", (ref ClientOptions opts) =>
-        {
-            opts.HttpClient = httpClient;
-        });
+        using var httpClient = new HttpClient(new MockAnthropicHandler("{}"));
+        using var anthropicClient = new AnthropicClient(new ClientOptions { HttpClient = httpClient });
+        using var client = anthropicClient.WithBraintrust();
 
         Assert.NotNull(client);
         Assert.NotNull(client.Messages);
@@ -384,8 +355,8 @@ public class BraintrustAnthropicTest : IDisposable
     public void WithOptions_ReturnsInstrumentedClient()
     {
         SetupOpenTelemetry();
-        var activitySource = BraintrustTracing.GetActivitySource();
-        var client = BraintrustAnthropic.WrapAnthropic(activitySource, "test-api-key");
+        using var anthropicClient = new AnthropicClient();
+        using var client = anthropicClient.WithBraintrust();
 
         // WithOptions should return a new instrumented client
         var modified = client.WithOptions(opts => opts);
