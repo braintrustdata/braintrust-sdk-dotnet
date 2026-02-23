@@ -39,7 +39,7 @@ internal sealed class InstrumentedMessageService : IMessageService
         CancellationToken cancellationToken = default)
     {
         // Start a span for the message creation
-        using var activity = _activitySource.StartActivity("Message Creation", ActivityKind.Client);
+        using var activity = _activitySource.StartActivity("anthropic.messages.create", ActivityKind.Client);
         var startTime = DateTime.UtcNow;
 
         try
@@ -208,8 +208,20 @@ internal sealed class InstrumentedMessageService : IMessageService
 
         try
         {
-            var messagesJson = ToJson(request.Messages);
-            activity.SetTag("braintrust.input_json", messagesJson);
+            // Build input as an array of {role, content} objects, including the system
+            // prompt as a {role:"system"} entry — matches the convention used by other
+            // Braintrust SDKs so cross-language span validation passes.
+            var inputMessages = request.Messages.Select(m =>
+            {
+                m.Content.TryPickString(out var content);
+                return (object)new { role = m.Role.Raw(), content };
+            }).ToList<object>();
+            if (request.System is { } sys)
+            {
+                sys.TryPickString(out var sysContent);
+                inputMessages.Add(new { role = "system", content = sysContent });
+            }
+            activity.SetTag("braintrust.input_json", ToJson(inputMessages));
 
             var contentJson = response.ToString();
             activity.SetTag("braintrust.output_json", contentJson);

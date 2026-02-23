@@ -134,7 +134,7 @@ public class BraintrustAnthropicTest : IDisposable
         Assert.Single(_exportedSpans);
         var span = _exportedSpans[0];
 
-        Assert.Equal("Message Creation", span.DisplayName);
+        Assert.Equal("anthropic.messages.create", span.DisplayName);
 
         // Verify provider tag
         Assert.Equal("anthropic", span.GetTagItem("provider"));
@@ -208,7 +208,7 @@ public class BraintrustAnthropicTest : IDisposable
         Assert.Single(_exportedSpans);
         var span = _exportedSpans[0];
 
-        Assert.Equal("Message Creation", span.DisplayName);
+        Assert.Equal("anthropic.messages.create", span.DisplayName);
         Assert.Equal(ActivityStatusCode.Error, span.Status);
     }
 
