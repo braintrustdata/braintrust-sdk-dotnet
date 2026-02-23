@@ -6,6 +6,7 @@ using Anthropic.Core;
 using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using Braintrust.Sdk.Config;
+using Braintrust.Sdk.Trace;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -72,7 +73,7 @@ public class BraintrustAnthropicTest : IDisposable
     private IAnthropicClient CreateInstrumentedClient(MockAnthropicHandler handler)
     {
         var clientOptions = new ClientOptions { HttpClient = new HttpClient(handler) };
-        return new AnthropicClient(clientOptions).WithBraintrust();
+        return new AnthropicClient(clientOptions).WithBraintrust(BraintrustTracing.GetActivitySource());
     }
 
     [Fact]
@@ -343,7 +344,7 @@ public class BraintrustAnthropicTest : IDisposable
         SetupOpenTelemetry();
         using var httpClient = new HttpClient(new MockAnthropicHandler("{}"));
         using var anthropicClient = new AnthropicClient(new ClientOptions { HttpClient = httpClient });
-        using var client = anthropicClient.WithBraintrust();
+        using var client = anthropicClient.WithBraintrust(BraintrustTracing.GetActivitySource());
 
         Assert.NotNull(client);
         Assert.NotNull(client.Messages);
@@ -356,7 +357,7 @@ public class BraintrustAnthropicTest : IDisposable
     {
         SetupOpenTelemetry();
         using var anthropicClient = new AnthropicClient();
-        using var client = anthropicClient.WithBraintrust();
+        using var client = anthropicClient.WithBraintrust(BraintrustTracing.GetActivitySource());
 
         // WithOptions should return a new instrumented client
         var modified = client.WithOptions(opts => opts);
