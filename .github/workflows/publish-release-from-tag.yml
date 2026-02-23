@@ -91,10 +91,16 @@ jobs:
           dotnet build --no-restore --configuration Release
           dotnet test --no-build --configuration Release --verbosity normal
 
-      - name: Pack NuGet package
+      - name: Pack NuGet packages
         run: |
           VERSION="${{ steps.validate-tag.outputs.version }}"
           dotnet pack src/Braintrust.Sdk/Braintrust.Sdk.csproj \
+            --configuration Release \
+            --no-build \
+            -p:PackageVersion="$VERSION" \
+            -p:Version="$VERSION" \
+            --output ./artifacts
+          dotnet pack src/Braintrust.Sdk.Anthropic/Braintrust.Sdk.Anthropic.csproj \
             --configuration Release \
             --no-build \
             -p:PackageVersion="$VERSION" \
@@ -106,19 +112,29 @@ jobs:
         run: |
           VERSION="${{ steps.validate-tag.outputs.version }}"
 
-          # Find the built NuGet package
+          # Find the built NuGet packages
           NUPKG=$(find ./artifacts -name "Braintrust.Sdk.${VERSION}.nupkg" | head -1)
           SNUPKG=$(find ./artifacts -name "Braintrust.Sdk.${VERSION}.snupkg" | head -1)
+          ANTHROPIC_NUPKG=$(find ./artifacts -name "Braintrust.Sdk.Anthropic.${VERSION}.nupkg" | head -1)
+          ANTHROPIC_SNUPKG=$(find ./artifacts -name "Braintrust.Sdk.Anthropic.${VERSION}.snupkg" | head -1)
 
           echo "nupkg=$NUPKG" >> $GITHUB_OUTPUT
           if [[ -n "$SNUPKG" ]]; then
             echo "snupkg=$SNUPKG" >> $GITHUB_OUTPUT
+          fi
+          echo "anthropic_nupkg=$ANTHROPIC_NUPKG" >> $GITHUB_OUTPUT
+          if [[ -n "$ANTHROPIC_SNUPKG" ]]; then
+            echo "anthropic_snupkg=$ANTHROPIC_SNUPKG" >> $GITHUB_OUTPUT
           fi
 
           echo "Found artifacts:"
           echo "  NuGet package: $NUPKG"
           if [[ -n "$SNUPKG" ]]; then
             echo "  Symbols package: $SNUPKG"
+          fi
+          echo "  Anthropic NuGet package: $ANTHROPIC_NUPKG"
+          if [[ -n "$ANTHROPIC_SNUPKG" ]]; then
+            echo "  Anthropic symbols package: $ANTHROPIC_SNUPKG"
           fi
 
       - name: Create GitHub Release
@@ -131,13 +147,15 @@ jobs:
             --title "Release $TAG"
 
           # Upload artifacts if they exist
-          if [[ -n "${{ steps.find-artifacts.outputs.nupkg }}" && -f "${{ steps.find-artifacts.outputs.nupkg }}" ]]; then
-            gh release upload "$TAG" "${{ steps.find-artifacts.outputs.nupkg }}"
-          fi
-
-          if [[ -n "${{ steps.find-artifacts.outputs.snupkg }}" && -f "${{ steps.find-artifacts.outputs.snupkg }}" ]]; then
-            gh release upload "$TAG" "${{ steps.find-artifacts.outputs.snupkg }}"
-          fi
+          for artifact in \
+            "${{ steps.find-artifacts.outputs.nupkg }}" \
+            "${{ steps.find-artifacts.outputs.snupkg }}" \
+            "${{ steps.find-artifacts.outputs.anthropic_nupkg }}" \
+            "${{ steps.find-artifacts.outputs.anthropic_snupkg }}"; do
+            if [[ -n "$artifact" && -f "$artifact" ]]; then
+              gh release upload "$TAG" "$artifact"
+            fi
+          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -149,21 +167,25 @@ jobs:
 
       - name: Publish to NuGet.org
         run: |
-          NUPKG="${{ steps.find-artifacts.outputs.nupkg }}"
+          for NUPKG in \
+            "${{ steps.find-artifacts.outputs.nupkg }}" \
+            "${{ steps.find-artifacts.outputs.anthropic_nupkg }}"; do
+            if [[ -z "$NUPKG" || ! -f "$NUPKG" ]]; then
+              echo "Error: NuGet package not found: $NUPKG"
+              exit 1
+            fi
 
-          if [[ -z "$NUPKG" || ! -f "$NUPKG" ]]; then
-            echo "Error: NuGet package not found"
-            exit 1
-          fi
-
-          echo "Publishing $NUPKG to NuGet.org..."
-          dotnet nuget push "$NUPKG" \
-            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+            echo "Publishing $NUPKG to NuGet.org..."
+            dotnet nuget push "$NUPKG" \
+              --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
 
       - name: Wait for NuGet.org indexing
         run: |
           VERSION="${{ steps.validate-tag.outputs.version }}"
-          echo "Package published! It may take a few minutes to appear on NuGet.org"
-          echo "Check status at: https://www.nuget.org/packages/Braintrust.Sdk/$VERSION"
+          echo "Packages published! It may take a few minutes to appear on NuGet.org"
+          echo "Check status at:"
+          echo "  https://www.nuget.org/packages/Braintrust.Sdk/$VERSION"
+          echo "  https://www.nuget.org/packages/Braintrust.Sdk.Anthropic/$VERSION"
