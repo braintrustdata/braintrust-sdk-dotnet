@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Braintrust.Sdk.Git;
 
 namespace Braintrust.Sdk.Api;
 
@@ -21,6 +22,8 @@ public record Experiment(
     [property: JsonPropertyName("project_id")] string ProjectId,
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string? Description = null,
+    [property: JsonPropertyName("repo_info")] RepoInfo? RepoInfo = null,
+    [property: JsonPropertyName("commit")] string? Commit = null,
     [property: JsonPropertyName("created")] string? Created = null,
     [property: JsonPropertyName("updated")] string? Updated = null
 );
@@ -56,6 +59,7 @@ public record CreateExperimentRequest(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string? Description = null,
     [property: JsonPropertyName("base_experiment_id")] string? BaseExperimentId = null,
+    [property: JsonPropertyName("repo_info")] RepoInfo? RepoInfo = null,
     [property: JsonPropertyName("tags")] IReadOnlyList<string>? Tags = null,
     [property: JsonPropertyName("metadata")] IReadOnlyDictionary<string, object>? Metadata = null
 );
