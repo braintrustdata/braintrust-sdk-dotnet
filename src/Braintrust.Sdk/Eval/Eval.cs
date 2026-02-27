@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
+using Braintrust.Sdk.Git;
 using Braintrust.Sdk.Trace;
 
 namespace Braintrust.Sdk.Eval;
@@ -32,8 +33,9 @@ public sealed class Eval<TInput, TOutput>
     private readonly IReadOnlyList<string>? _experimentTags;
     private readonly IReadOnlyDictionary<string, object>? _experimentMetadata;
     private readonly int? _maxConcurrency;
+    private readonly RepoInfo? _repoInfo;
 
-    private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject)
+    private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject, RepoInfo? repoInfo)
     {
         _experimentName = builder._experimentName;
         _config = builder._config ?? throw new ArgumentNullException(nameof(builder._config));
@@ -47,6 +49,7 @@ public sealed class Eval<TInput, TOutput>
         _experimentTags = builder._experimentTags;
         _experimentMetadata = builder._experimentMetadata;
         _maxConcurrency = builder._maxConcurrency;
+        _repoInfo = repoInfo;
     }
 
     /// <summary>
@@ -58,6 +61,7 @@ public sealed class Eval<TInput, TOutput>
             new CreateExperimentRequest(
                 _orgAndProject.Project.Id,
                 _experimentName,
+                RepoInfo: _repoInfo,
                 Tags: _experimentTags,
                 Metadata: _experimentMetadata))
             .ConfigureAwait(false);
@@ -245,6 +249,9 @@ public sealed class Eval<TInput, TOutput>
         internal IReadOnlyList<string>? _experimentTags;
         internal IReadOnlyDictionary<string, object>? _experimentMetadata;
         internal int? _maxConcurrency = 10;
+        internal RepoInfo? _repoInfo;
+        internal bool _repoInfoExplicitlySet;
+        internal GitMetadataSettings? _gitMetadataSettings;
 
         /// <summary>
         /// Build the Eval instance.
@@ -284,7 +291,19 @@ public sealed class Eval<TInput, TOutput>
                                 ?? throw new InvalidOperationException($"Invalid project id: {_projectId}");
             }
 
-            return new Eval<TInput, TOutput>(this, orgAndProject);
+            // Collect git repo info: use explicit value if set, otherwise auto-detect.
+            // This is intentionally non-throwing — if git is unavailable, repoInfo is simply null.
+            RepoInfo? repoInfo;
+            if (_repoInfoExplicitlySet)
+            {
+                repoInfo = _repoInfo;
+            }
+            else
+            {
+                repoInfo = await GitUtil.GetRepoInfoAsync(_gitMetadataSettings).ConfigureAwait(false);
+            }
+
+            return new Eval<TInput, TOutput>(this, orgAndProject, repoInfo);
         }
 
         /// <summary>
@@ -443,6 +462,28 @@ public sealed class Eval<TInput, TOutput>
                     "MaxConcurrency must be greater than 0");
             }
             _maxConcurrency = maxConcurrency;
+            return this;
+        }
+
+        /// <summary>
+        /// Explicitly set the git repository metadata for the experiment.
+        /// Pass null to disable repo info even when running inside a git repository.
+        /// If not called, repo info is auto-detected from the current working directory.
+        /// </summary>
+        public Builder RepoInfo(RepoInfo? repoInfo)
+        {
+            _repoInfo = repoInfo;
+            _repoInfoExplicitlySet = true;
+            return this;
+        }
+
+        /// <summary>
+        /// Control which git metadata fields are automatically collected.
+        /// Only applies when <see cref="RepoInfo(RepoInfo?)"/> has not been called explicitly.
+        /// </summary>
+        public Builder GitMetadataSettings(GitMetadataSettings settings)
+        {
+            _gitMetadataSettings = settings ?? throw new ArgumentNullException(nameof(settings));
             return this;
         }
     }
