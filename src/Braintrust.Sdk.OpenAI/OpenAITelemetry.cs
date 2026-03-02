@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using OpenAI;
 
-namespace Braintrust.Sdk.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI;
 
 /// <summary>
 /// Entry point for instrumenting OpenAI clients.

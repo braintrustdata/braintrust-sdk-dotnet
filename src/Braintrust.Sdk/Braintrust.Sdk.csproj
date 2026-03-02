@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Braintrust.Sdk.Tests" />
+    <InternalsVisibleTo Include="Braintrust.Sdk.OpenAI.Tests" />
     <InternalsVisibleTo Include="Braintrust.Sdk.Anthropic.Tests" />
   </ItemGroup>
 
@@ -18,7 +19,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="OpenAI" Version="2.6.0" />
     <PackageReference Include="OpenTelemetry" Version="1.9.0" />
     <PackageReference Include="OpenTelemetry.Api" Version="1.9.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.9.0" />
