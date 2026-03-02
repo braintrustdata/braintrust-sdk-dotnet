@@ -94,7 +94,7 @@
   </PropertyGroup>
 
   <!-- Target to verify the version in the built assembly matches the expected git version -->
-  <Target Name="VerifyAssemblyVersion" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk'">
+  <Target Name="VerifyAssemblyVersion" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.OpenAI' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.Anthropic'">
     <Message Text="Verifying SDK version in built assembly..." Importance="high" />
 
     <!-- Get the expected version (recompute it to ensure consistency) -->
@@ -204,11 +204,20 @@ Console.WriteLine(version);
     <!-- Create temporary verifier program -->
     <WriteLinesToFile File="$(TempVerifierCode)" Overwrite="true" Lines="
 using System%3B
+using System.IO%3B
 using System.Reflection%3B
 
 var assemblyPath = @&quot;$(TargetPath)&quot;%3B
 var assembly = Assembly.LoadFrom(assemblyPath)%3B
 var sdkVersionType = assembly.GetType(&quot;Braintrust.Sdk.SdkVersion&quot;)%3B
+if (sdkVersionType == null)
+{
+    var sdkPath = Path.Combine(Path.GetDirectoryName(assemblyPath)!, &quot;Braintrust.Sdk.dll&quot;)%3B
+    if (!File.Exists(sdkPath)) { Console.Error.WriteLine(&quot;ERROR: Braintrust.Sdk.dll not found in output directory&quot;)%3B Environment.Exit(1)%3B }
+    var sdkAssembly = Assembly.LoadFrom(sdkPath)%3B
+    sdkVersionType = sdkAssembly.GetType(&quot;Braintrust.Sdk.SdkVersion&quot;)%3B
+}
+if (sdkVersionType == null) { Console.Error.WriteLine(&quot;ERROR: SdkVersion type not found&quot;)%3B Environment.Exit(1)%3B }
 var versionProperty = sdkVersionType.GetProperty(&quot;Version&quot;, BindingFlags.Public | BindingFlags.Static)%3B
 var version = versionProperty.GetValue(null) as string%3B
 Console.WriteLine(version)%3B
