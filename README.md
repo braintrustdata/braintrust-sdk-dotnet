@@ -9,18 +9,30 @@ This library provides tools for **evaluating** and **tracing** AI applications i
 
 - **Evaluate** your AI models with custom test cases and scoring functions
 - **Trace** LLM calls and monitor AI application performance with OpenTelemetry
-- **Integrate** seamlessly with OpenAI and other LLM providers
+- **Integrate** seamlessly with OpenAI, Anthropic, and other LLM providers
 
 This SDK is currently in BETA status and APIs may change.
 
 ## Installation
 
-You can install the Braintrust SDK via [NuGet](https://www.nuget.org/packages/Braintrust.Sdk):
+The SDK is split into packages by LLM provider integration. Install the core package plus any provider integrations you need.
 
-### Using the .NET CLI
+### Core package
 
 ```bash
 dotnet add package Braintrust.Sdk
+```
+
+### OpenAI integration
+
+```bash
+dotnet add package Braintrust.Sdk.OpenAI
+```
+
+### Anthropic integration
+
+```bash
+dotnet add package Braintrust.Sdk.Anthropic
 ```
 
 ### Or add to your .csproj file
@@ -28,6 +40,8 @@ dotnet add package Braintrust.Sdk
 ```xml
 <ItemGroup>
   <PackageReference Include="Braintrust.Sdk" Version="version goes here" />
+  <PackageReference Include="Braintrust.Sdk.OpenAI" Version="version goes here" />   <!-- optional -->
+  <PackageReference Include="Braintrust.Sdk.Anthropic" Version="version goes here" /> <!-- optional -->
 </ItemGroup>
 ```
 
