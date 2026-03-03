@@ -1,10 +1,10 @@
 using System;
 using System.Diagnostics;
-using Braintrust.Sdk.Instrumentation.OpenAI;
+using Braintrust.Sdk.OpenAI;
 using Braintrust.Sdk.Trace;
 using Xunit;
 
-namespace Braintrust.Sdk.Tests.Instrumentation.OpenAI;
+namespace Braintrust.Sdk.OpenAI.Tests;
 
 [Collection("BraintrustGlobals")]
 public class InstrumentedChatClientTest

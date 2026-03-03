@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,8 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.5.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Braintrust.Sdk\Braintrust.Sdk.csproj" />
-    <ProjectReference Include="..\..\src\Braintrust.Sdk.OpenAI\Braintrust.Sdk.OpenAI.csproj" />
+    <ProjectReference Include="..\..\src\Braintrust.Sdk.Anthropic\Braintrust.Sdk.Anthropic.csproj" />
   </ItemGroup>
 
 </Project>

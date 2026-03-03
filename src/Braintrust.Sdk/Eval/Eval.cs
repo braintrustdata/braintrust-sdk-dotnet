@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
+using Braintrust.Sdk.Git;
 using Braintrust.Sdk.Trace;
 
 namespace Braintrust.Sdk.Eval;
@@ -31,8 +32,10 @@ public sealed class Eval<TInput, TOutput>
     private readonly IReadOnlyList<IScorer<TInput, TOutput>> _scorers;
     private readonly IReadOnlyList<string>? _experimentTags;
     private readonly IReadOnlyDictionary<string, object>? _experimentMetadata;
+    private readonly int? _maxConcurrency;
+    private readonly RepoInfo? _repoInfo;
 
-    private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject)
+    private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject, RepoInfo? repoInfo)
     {
         _experimentName = builder._experimentName;
         _config = builder._config ?? throw new ArgumentNullException(nameof(builder._config));
@@ -45,6 +48,8 @@ public sealed class Eval<TInput, TOutput>
         _scorers = builder._scorers.ToList();
         _experimentTags = builder._experimentTags;
         _experimentMetadata = builder._experimentMetadata;
+        _maxConcurrency = builder._maxConcurrency;
+        _repoInfo = repoInfo;
     }
 
     /// <summary>
@@ -56,22 +61,49 @@ public sealed class Eval<TInput, TOutput>
             new CreateExperimentRequest(
                 _orgAndProject.Project.Id,
                 _experimentName,
+                RepoInfo: _repoInfo,
                 Tags: _experimentTags,
                 Metadata: _experimentMetadata))
             .ConfigureAwait(false);
 
         var experimentId = experiment.Id;
 
+        var cases = new List<DatasetCase<TInput, TOutput>>();
         await foreach (var datasetCase in _dataset.GetCasesAsync())
         {
-            EvalOne(experimentId, datasetCase);
+            cases.Add(datasetCase);
+        }
+
+        // Run cases in parallel
+        if (_maxConcurrency.HasValue)
+        {
+            using var semaphore = new SemaphoreSlim(_maxConcurrency.Value);
+            var tasks = cases.Select(async datasetCase =>
+            {
+                await semaphore.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    await EvalOne(experimentId, datasetCase).ConfigureAwait(false);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        else
+        {
+            // Unlimited parallelism
+            var tasks = cases.Select(datasetCase => EvalOne(experimentId, datasetCase));
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
         var experimentUrl = CreateExperimentUrl(_config.AppUrl, _orgAndProject, _experimentName);
         return new EvalResult(experimentUrl);
     }
 
-    private void EvalOne(string experimentId, DatasetCase<TInput, TOutput> datasetCase)
+    private async Task EvalOne(string experimentId, DatasetCase<TInput, TOutput> datasetCase)
     {
         // Create root span for this eval case (no parent - each eval case is its own trace)
         using var rootActivity = _activitySource.StartActivity(
@@ -113,7 +145,7 @@ public sealed class Eval<TInput, TOutput>
                 try
                 {
                     using var taskScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
-                    taskResult = _task.Apply(datasetCase);
+                    taskResult = await _task.Apply(datasetCase).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -123,7 +155,7 @@ public sealed class Eval<TInput, TOutput>
                 rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult.Result }));
             }
 
-            // Run scorers
+            // Run scorers in parallel
             {
                 using var scoreActivity = _activitySource.StartActivity("score");
                 scoreActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
@@ -133,18 +165,25 @@ public sealed class Eval<TInput, TOutput>
                 {
                     using var scoreScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
 
-                    // Linked dictionary to preserve ordering
+                    // Run all scorers in parallel
+                    var scorerTasks = _scorers.Select(async scorer =>
+                    {
+                        var scores = await scorer.Score(taskResult).ConfigureAwait(false);
+                        return (scorer.Name, Scores: scores);
+                    });
+
+                    var scorerResults = await Task.WhenAll(scorerTasks).ConfigureAwait(false);
+
                     var nameToScore = new Dictionary<string, double>();
                     var nameToMetadata = new Dictionary<string, IReadOnlyDictionary<string, object>>();
-                    foreach (var scorer in _scorers)
+                    foreach (var (scorerName, scores) in scorerResults)
                     {
-                        var scores = scorer.Score(taskResult);
                         foreach (var score in scores)
                         {
                             if (score.Value < 0.0 || score.Value > 1.0)
                             {
                                 throw new InvalidOperationException(
-                                    $"Score must be between 0 and 1: {scorer.Name} : {score}");
+                                    $"Score must be between 0 and 1: {scorerName} : {score}");
                             }
                             nameToScore[score.Name] = score.Value;
                             if (score.Metadata != null && score.Metadata.Count > 0)
@@ -218,6 +257,10 @@ public sealed class Eval<TInput, TOutput>
         internal List<IScorer<TInput, TOutput>> _scorers = new();
         internal IReadOnlyList<string>? _experimentTags;
         internal IReadOnlyDictionary<string, object>? _experimentMetadata;
+        internal int? _maxConcurrency = 10;
+        internal RepoInfo? _repoInfo;
+        internal bool _repoInfoExplicitlySet;
+        internal GitMetadataSettings? _gitMetadataSettings;
 
         /// <summary>
         /// Build the Eval instance.
@@ -257,7 +300,19 @@ public sealed class Eval<TInput, TOutput>
                                 ?? throw new InvalidOperationException($"Invalid project id: {_projectId}");
             }
 
-            return new Eval<TInput, TOutput>(this, orgAndProject);
+            // Collect git repo info: use explicit value if set, otherwise auto-detect.
+            // This is intentionally non-throwing — if git is unavailable, repoInfo is simply null.
+            RepoInfo? repoInfo;
+            if (_repoInfoExplicitlySet)
+            {
+                repoInfo = _repoInfo;
+            }
+            else
+            {
+                repoInfo = await GitUtil.GetRepoInfoAsync(_gitMetadataSettings).ConfigureAwait(false);
+            }
+
+            return new Eval<TInput, TOutput>(this, orgAndProject, repoInfo);
         }
 
         /// <summary>
@@ -336,11 +391,20 @@ public sealed class Eval<TInput, TOutput>
         }
 
         /// <summary>
-        /// Set the task from a function that takes input and returns output.
+        /// Set the task from a synchronous function that takes input and returns output.
         /// </summary>
         public Builder TaskFunction(Func<TInput, TOutput> taskFn)
         {
-            _task = new FunctionTask(taskFn);
+            _task = new SyncFunctionTask(taskFn);
+            return this;
+        }
+
+        /// <summary>
+        /// Set the task from an asynchronous function that takes input and returns output.
+        /// </summary>
+        public Builder TaskFunction(Func<TInput, Task<TOutput>> taskFn)
+        {
+            _task = new AsyncFunctionTask(taskFn);
             return this;
         }
 
@@ -393,20 +457,75 @@ public sealed class Eval<TInput, TOutput>
             return this;
         }
 
-        private class FunctionTask : ITask<TInput, TOutput>
+        /// <summary>
+        /// Set the maximum number of cases that will be evaluated concurrently.
+        /// Defaults to 10. Set to null for unlimited concurrency.
+        /// </summary>
+        public Builder MaxConcurrency(int? maxConcurrency)
         {
-            private readonly Func<TInput, TOutput> _taskFn;
-
-            public FunctionTask(Func<TInput, TOutput> taskFn)
+            if (maxConcurrency.HasValue && maxConcurrency.Value <= 0)
             {
-                _taskFn = taskFn;
+                throw new ArgumentOutOfRangeException(
+                    nameof(maxConcurrency),
+                    maxConcurrency.Value,
+                    "MaxConcurrency must be greater than 0");
             }
+            _maxConcurrency = maxConcurrency;
+            return this;
+        }
 
-            public TaskResult<TInput, TOutput> Apply(DatasetCase<TInput, TOutput> datasetCase)
-            {
-                var result = _taskFn(datasetCase.Input);
-                return new TaskResult<TInput, TOutput>(result, datasetCase);
-            }
+        /// <summary>
+        /// Explicitly set the git repository metadata for the experiment.
+        /// Pass null to disable repo info even when running inside a git repository.
+        /// If not called, repo info is auto-detected from the current working directory.
+        /// </summary>
+        public Builder RepoInfo(RepoInfo? repoInfo)
+        {
+            _repoInfo = repoInfo;
+            _repoInfoExplicitlySet = true;
+            return this;
+        }
+
+        /// <summary>
+        /// Control which git metadata fields are automatically collected.
+        /// Only applies when <see cref="RepoInfo(RepoInfo?)"/> has not been called explicitly.
+        /// </summary>
+        public Builder GitMetadataSettings(GitMetadataSettings settings)
+        {
+            _gitMetadataSettings = settings ?? throw new ArgumentNullException(nameof(settings));
+            return this;
+        }
+    }
+
+    private class SyncFunctionTask : ITask<TInput, TOutput>
+    {
+        private readonly Func<TInput, TOutput> _taskFn;
+
+        public SyncFunctionTask(Func<TInput, TOutput> taskFn)
+        {
+            _taskFn = taskFn;
+        }
+
+        public Task<TaskResult<TInput, TOutput>> Apply(DatasetCase<TInput, TOutput> datasetCase)
+        {
+            var result = _taskFn(datasetCase.Input);
+            return Task.FromResult(new TaskResult<TInput, TOutput>(result, datasetCase));
+        }
+    }
+
+    private class AsyncFunctionTask : ITask<TInput, TOutput>
+    {
+        private readonly Func<TInput, Task<TOutput>> _taskFn;
+
+        public AsyncFunctionTask(Func<TInput, Task<TOutput>> taskFn)
+        {
+            _taskFn = taskFn;
+        }
+
+        public async Task<TaskResult<TInput, TOutput>> Apply(DatasetCase<TInput, TOutput> datasetCase)
+        {
+            var result = await _taskFn(datasetCase.Input).ConfigureAwait(false);
+            return new TaskResult<TInput, TOutput>(result, datasetCase);
         }
     }
 }

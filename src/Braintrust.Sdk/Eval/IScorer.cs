@@ -3,6 +3,9 @@ namespace Braintrust.Sdk.Eval;
 /// <summary>
 /// A scorer evaluates the result of a test case with a score between 0 (inclusive) and 1 (inclusive).
 /// </summary>
+/// <remarks>
+/// Implementations must be thread-safe as scorers may be executed concurrently.
+/// </remarks>
 /// <typeparam name="TInput">Type of the input data</typeparam>
 /// <typeparam name="TOutput">Type of the output data</typeparam>
 public interface IScorer<TInput, TOutput>
@@ -17,5 +20,5 @@ public interface IScorer<TInput, TOutput>
     /// <summary>
     /// Score the task result and return one or more scores.
     /// </summary>
-    IReadOnlyList<Score> Score(TaskResult<TInput, TOutput> taskResult);
+    Task<IReadOnlyList<Score>> Score(TaskResult<TInput, TOutput> taskResult);
 }

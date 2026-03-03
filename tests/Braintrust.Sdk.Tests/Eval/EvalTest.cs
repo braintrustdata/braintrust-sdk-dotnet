@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Eval;
+using Braintrust.Sdk.Git;
 
 namespace Braintrust.Sdk.Tests.Eval;
 
@@ -259,7 +260,7 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
-    public void ScorerCreatesValidScore()
+    public async Task ScorerCreatesValidScore()
     {
         var scorer = new FunctionScorer<string, string>("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
         var taskResult = new TaskResult<string, string>(
@@ -267,7 +268,7 @@ public class EvalTest : IDisposable
             DatasetCase.Of("input", "expected")
         );
 
-        var scores = scorer.Score(taskResult);
+        var scores = await scorer.Score(taskResult);
 
         Assert.Single(scores);
         Assert.Equal("test_scorer", scores[0].Name);
@@ -323,5 +324,195 @@ public class EvalTest : IDisposable
         Assert.Equal("input1", case1.Input);
         Assert.NotNull(case2);
         Assert.Equal("input2", case2.Input);
+    }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(-100)]
+    public void MaxConcurrencyRejectsInvalidValues(int invalidValue)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Eval<string, string>.NewBuilder()
+                .MaxConcurrency(invalidValue));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(100)]
+    public void MaxConcurrencyAcceptsValidValues(int validValue)
+    {
+        var builder = Eval<string, string>.NewBuilder()
+            .MaxConcurrency(validValue);
+        Assert.NotNull(builder);
+    }
+
+    [Fact]
+    public void MaxConcurrencyAcceptsNull()
+    {
+        var builder = Eval<string, string>.NewBuilder()
+            .MaxConcurrency(null);
+        Assert.NotNull(builder);
+    }
+
+    [Fact]
+    public async Task EvalWithMaxConcurrencyBuildsAndRuns()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var cases = new DatasetCase<string, string>[]
+        {
+            new("strawberry", "fruit"),
+            new("asparagus", "vegetable"),
+            new("banana", "fruit"),
+            new("carrot", "vegetable")
+        };
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-with-concurrency")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(cases)
+            .TaskFunction(food => "fruit")
+            .MaxConcurrency(2)
+            .Scorers(
+                new FunctionScorer<string, string>("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0)
+            )
+            .BuildAsync();
+
+        var result = await eval.RunAsync();
+
+        Assert.NotNull(result.ExperimentUrl);
+        Assert.Contains("test-eval-with-concurrency", result.ExperimentUrl);
+    }
+
+    [Fact]
+    public async Task EvalAutoCollectsRepoInfo()
+    {
+        // When running in a git repo (which the test suite is), repo_info should be
+        // auto-populated on the CreateExperimentRequest.
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-repo-info")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(new FunctionScorer<string, string>("match", (expected, actual) => expected == actual ? 1.0 : 0.0))
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        var lastRequest = mockClient.LastCreateExperimentRequest;
+        Assert.NotNull(lastRequest);
+        Assert.NotNull(lastRequest.RepoInfo);
+        Assert.NotNull(lastRequest.RepoInfo.Commit);
+        Assert.Matches("^[0-9a-f]{40}$", lastRequest.RepoInfo.Commit);
+    }
+
+    [Fact]
+    public async Task EvalExplicitNullRepoInfoDisablesCollection()
+    {
+        // Passing RepoInfo(null) should disable auto-detection.
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-no-repo-info")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(new FunctionScorer<string, string>("match", (_, _) => 1.0))
+            .RepoInfo(null)
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        var lastRequest = mockClient.LastCreateExperimentRequest;
+        Assert.NotNull(lastRequest);
+        Assert.Null(lastRequest.RepoInfo);
+    }
+
+    [Fact]
+    public async Task EvalWithExplicitRepoInfoUsesProvidedValue()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+        var customRepoInfo = new RepoInfo(
+            Commit: "abc123def456",
+            Branch: "feature/test",
+            Dirty: false
+        );
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-custom-repo-info")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(new FunctionScorer<string, string>("match", (_, _) => 1.0))
+            .RepoInfo(customRepoInfo)
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        var lastRequest = mockClient.LastCreateExperimentRequest;
+        Assert.NotNull(lastRequest);
+        Assert.NotNull(lastRequest.RepoInfo);
+        Assert.Equal("abc123def456", lastRequest.RepoInfo.Commit);
+        Assert.Equal("feature/test", lastRequest.RepoInfo.Branch);
+        Assert.Equal(false, lastRequest.RepoInfo.Dirty);
+    }
+
+    [Fact]
+    public async Task EvalWithGitMetadataSettingsNoneOmitsRepoInfo()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-no-git")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(new FunctionScorer<string, string>("match", (_, _) => 1.0))
+            .GitMetadataSettings(Sdk.Git.GitMetadataSettings.None())
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        var lastRequest = mockClient.LastCreateExperimentRequest;
+        Assert.NotNull(lastRequest);
+        Assert.Null(lastRequest.RepoInfo);
     }
 }
