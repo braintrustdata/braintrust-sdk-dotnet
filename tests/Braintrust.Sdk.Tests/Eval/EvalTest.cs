@@ -272,6 +272,31 @@ public class EvalTest : IDisposable
         Assert.Single(scores);
         Assert.Equal("test_scorer", scores[0].Name);
         Assert.Equal(1.0, scores[0].Value);
+        Assert.Null(scores[0].Metadata);
+    }
+
+    [Fact]
+    public void ScoreSupportsMetadata()
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            { "judge", "llm" },
+            { "explanation", "Exact semantic match" }
+        };
+
+        var score = new Score("semantic_match", 1.0, metadata);
+
+        Assert.Equal("semantic_match", score.Name);
+        Assert.Equal(1.0, score.Value);
+        var scoreMetadata = score.Metadata;
+        Assert.NotNull(scoreMetadata);
+        if (scoreMetadata == null)
+        {
+            throw new InvalidOperationException("Metadata should not be null");
+        }
+        var ok = scoreMetadata.TryGetValue("judge", out var judge);
+        Assert.True(ok);
+        Assert.Equal("llm", judge);
     }
 
     [Fact]

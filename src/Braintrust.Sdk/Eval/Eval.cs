@@ -135,6 +135,7 @@ public sealed class Eval<TInput, TOutput>
 
                     // Linked dictionary to preserve ordering
                     var nameToScore = new Dictionary<string, double>();
+                    var nameToMetadata = new Dictionary<string, IReadOnlyDictionary<string, object>>();
                     foreach (var scorer in _scorers)
                     {
                         var scores = scorer.Score(taskResult);
@@ -146,10 +147,18 @@ public sealed class Eval<TInput, TOutput>
                                     $"Score must be between 0 and 1: {scorer.Name} : {score}");
                             }
                             nameToScore[score.Name] = score.Value;
+                            if (score.Metadata != null && score.Metadata.Count > 0)
+                            {
+                                nameToMetadata[score.Name] = score.Metadata;
+                            }
                         }
                     }
 
                     scoreActivity?.SetTag("braintrust.scores", ToJson(nameToScore));
+                    if (nameToMetadata.Count > 0)
+                    {
+                        scoreActivity?.SetTag("braintrust.metadata", ToJson(nameToMetadata));
+                    }
                 }
                 finally
                 {
