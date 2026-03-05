@@ -289,8 +289,8 @@ public class EvalTest : IDisposable
 
         Assert.Equal("semantic_match", score.Name);
         Assert.Equal(1.0, score.Value);
-        Assert.NotNull(score.Metadata);
-        var ok = score.Metadata?.TryGetValue("judge", out var judge) ?? false;
+        var scoreMetadata = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object>>(score.Metadata);
+        var ok = scoreMetadata.TryGetValue("judge", out var judge);
         Assert.True(ok);
         Assert.Equal("llm", judge);
     }
