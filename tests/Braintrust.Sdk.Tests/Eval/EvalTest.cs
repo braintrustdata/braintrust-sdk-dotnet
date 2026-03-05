@@ -289,13 +289,8 @@ public class EvalTest : IDisposable
 
         Assert.Equal("semantic_match", score.Name);
         Assert.Equal(1.0, score.Value);
-        var scoreMetadata = score.Metadata;
-        Assert.NotNull(scoreMetadata);
-        if (scoreMetadata == null)
-        {
-            throw new InvalidOperationException("Metadata should not be null");
-        }
-        var ok = scoreMetadata.TryGetValue("judge", out var judge);
+        Assert.NotNull(score.Metadata);
+        var ok = score.Metadata?.TryGetValue("judge", out var judge) ?? false;
         Assert.True(ok);
         Assert.Equal("llm", judge);
     }
