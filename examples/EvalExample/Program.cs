@@ -5,6 +5,30 @@ using OpenAI.Chat;
 
 namespace Braintrust.Sdk.Examples.EvalExample;
 
+sealed class ExactMatchWithMetadataScorer : IScorer<string, string>
+{
+    public string Name => "exact_match";
+
+    public Task<IReadOnlyList<Score>> Score(TaskResult<string, string> taskResult)
+    {
+        var expected = taskResult.DatasetCase.Expected.Trim().ToLowerInvariant();
+        var actual = taskResult.Result.Trim().ToLowerInvariant();
+        var isMatch = expected == actual;
+
+        var metadata = new Dictionary<string, object>
+        {
+            { "expected", taskResult.DatasetCase.Expected },
+            { "actual", taskResult.Result },
+            { "normalized_expected", expected },
+            { "normalized_actual", actual },
+            { "is_match", isMatch }
+        };
+
+        IReadOnlyList<Score> scores = [new Score(Name, isMatch ? 1.0 : 0.0, metadata)];
+        return Task.FromResult(scores);
+    }
+}
+
 class Program
 {
     static async Task Main(string[] args)
@@ -65,7 +89,7 @@ class Program
             )
             .TaskFunction(GetFoodType)
             .Scorers(
-              new FunctionScorer<string, string>("exact_match", (expected, actual) => expected == actual ? 1.0 : 0.0),
+              new ExactMatchWithMetadataScorer(),
               new FunctionScorer<string, string>("close_enough_match", (expected, actual) => expected.Trim().ToLowerInvariant() == actual.Trim().ToLowerInvariant() ? 1.0 : 0.0)
             )
             .BuildAsync();
