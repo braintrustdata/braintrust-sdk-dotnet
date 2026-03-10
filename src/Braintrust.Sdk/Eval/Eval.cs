@@ -136,9 +136,10 @@ public sealed class Eval<TInput, TOutput>
             using var experimentScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
 
             // Run task
-            TaskResult<TInput, TOutput> taskResult;
+            TaskResult<TInput, TOutput>? taskResult = null;
+            Exception? taskException = null;
             {
-                using var taskActivity = _activitySource.StartActivity("task");
+                var taskActivity = _activitySource.StartActivity("task");
                 taskActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
                 taskActivity?.SetTag("braintrust.span_attributes", ToJson(new { type = "task" }));
 
@@ -147,62 +148,30 @@ public sealed class Eval<TInput, TOutput>
                     using var taskScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
                     taskResult = await _task.Apply(datasetCase).ConfigureAwait(false);
                 }
+                catch (Exception ex)
+                {
+                    taskException = ex;
+                    taskActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                    taskActivity?.AddEvent(CreateExceptionEvent(ex));
+                    rootActivity.SetStatus(ActivityStatusCode.Error, ex.Message);
+                }
                 finally
                 {
                     taskActivity?.Stop();
                 }
-
-                rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult.Result }));
             }
-
-            // Run scorers in parallel
+            if (taskException == null)
             {
-                using var scoreActivity = _activitySource.StartActivity("score");
-                scoreActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
-                scoreActivity?.SetTag("braintrust.span_attributes", ToJson(new { type = "score" }));
-
-                try
-                {
-                    using var scoreScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
-
-                    // Run all scorers in parallel
-                    var scorerTasks = _scorers.Select(async scorer =>
-                    {
-                        var scores = await scorer.Score(taskResult).ConfigureAwait(false);
-                        return (scorer.Name, Scores: scores);
-                    });
-
-                    var scorerResults = await Task.WhenAll(scorerTasks).ConfigureAwait(false);
-
-                    var nameToScore = new Dictionary<string, double>();
-                    var nameToMetadata = new Dictionary<string, IReadOnlyDictionary<string, object>>();
-                    foreach (var (scorerName, scores) in scorerResults)
-                    {
-                        foreach (var score in scores)
-                        {
-                            if (score.Value < 0.0 || score.Value > 1.0)
-                            {
-                                throw new InvalidOperationException(
-                                    $"Score must be between 0 and 1: {scorerName} : {score}");
-                            }
-                            nameToScore[score.Name] = score.Value;
-                            if (score.Metadata != null && score.Metadata.Count > 0)
-                            {
-                                nameToMetadata[score.Name] = score.Metadata;
-                            }
-                        }
-                    }
-
-                    scoreActivity?.SetTag("braintrust.scores", ToJson(nameToScore));
-                    if (nameToMetadata.Count > 0)
-                    {
-                        scoreActivity?.SetTag("braintrust.metadata", ToJson(nameToMetadata));
-                    }
-                }
-                finally
-                {
-                    scoreActivity?.Stop();
-                }
+                // Task succeeded — record output and run all scorers in parallel, each in their own span
+                rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult!.Value.Result }));
+                await RunScorers(experimentId, rootActivity, taskResult!.Value).ConfigureAwait(false);
+            }
+            else
+            {
+                // Task failed — run ScoreForTaskException on each scorer (each in its own span)
+                await RunScorersForTaskException(experimentId, rootActivity, taskException, datasetCase)
+                  .ConfigureAwait(false);
+                return;
             }
         }
         finally
@@ -211,9 +180,148 @@ public sealed class Eval<TInput, TOutput>
         }
     }
 
+    /// <summary>
+    /// Runs all scorers for a failed task, each in their own score span.
+    /// Calls <see cref="IScorer{TInput,TOutput}.ScoreForTaskException"/> on each scorer.
+    /// </summary>
+    private async Task RunScorersForTaskException(
+        string experimentId,
+        Activity rootActivity,
+        Exception taskException,
+        DatasetCase<TInput, TOutput> datasetCase)
+    {
+        var scorerTasks = _scorers.Select(scorer =>
+            RunSingleScorerForTaskException(experimentId, rootActivity, scorer, taskException, datasetCase));
+        await Task.WhenAll(scorerTasks).ConfigureAwait(false);
+    }
+
+    private async Task RunSingleScorerForTaskException(
+        string experimentId,
+        Activity rootActivity,
+        IScorer<TInput, TOutput> scorer,
+        Exception taskException,
+        DatasetCase<TInput, TOutput> datasetCase)
+    {
+        var scoreActivity = _activitySource.StartActivity($"score:{scorer.Name}");
+        scoreActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
+        scoreActivity?.SetTag("braintrust.span_attributes", ToJson(new { type = "score" }));
+
+        try
+        {
+            using var scoreScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
+            var scores = await scorer.ScoreForTaskException(taskException, datasetCase).ConfigureAwait(false);
+            RecordScores(scoreActivity, rootActivity, scorer.Name, scores);
+        }
+        finally
+        {
+            scoreActivity?.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Runs all scorers for a successful task result, each in their own score span.
+    /// Calls <see cref="IScorer{TInput,TOutput}.Score"/> and falls back to
+    /// <see cref="IScorer{TInput,TOutput}.ScoreForScorerException"/> on error.
+    /// </summary>
+    private async Task RunScorers(
+        string experimentId,
+        Activity rootActivity,
+        TaskResult<TInput, TOutput> taskResult)
+    {
+        var scorerTasks = _scorers.Select(scorer =>
+            RunSingleScorer(experimentId, rootActivity, scorer, taskResult));
+        await Task.WhenAll(scorerTasks).ConfigureAwait(false);
+    }
+
+    private async Task RunSingleScorer(
+        string experimentId,
+        Activity rootActivity,
+        IScorer<TInput, TOutput> scorer,
+        TaskResult<TInput, TOutput> taskResult)
+    {
+        var scoreActivity = _activitySource.StartActivity($"score:{scorer.Name}");
+        scoreActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
+        scoreActivity?.SetTag("braintrust.span_attributes", ToJson(new { type = "score" }));
+
+        try
+        {
+            using var scoreScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
+
+            IReadOnlyList<Score> scores;
+            try
+            {
+                scores = await scorer.Score(taskResult).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                scoreActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                scoreActivity?.AddEvent(CreateExceptionEvent(ex));
+                scores = await scorer.ScoreForScorerException(ex, taskResult).ConfigureAwait(false);
+            }
+
+            RecordScores(scoreActivity, rootActivity, scorer.Name, scores);
+        }
+        finally
+        {
+            scoreActivity?.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Validates scores and records them on the score activity and root activity as OTel tags.
+    /// </summary>
+    private static void RecordScores(
+        Activity? scoreActivity,
+        Activity rootActivity,
+        string scorerName,
+        IReadOnlyList<Score> scores)
+    {
+        var nameToScore = new Dictionary<string, double>();
+        var nameToMetadata = new Dictionary<string, IReadOnlyDictionary<string, object>>();
+
+        foreach (var score in scores)
+        {
+            if (score.Value < 0.0 || score.Value > 1.0)
+            {
+                throw new InvalidOperationException(
+                    $"Score must be between 0 and 1: {scorerName} : {score}");
+            }
+            nameToScore[score.Name] = score.Value;
+            if (score.Metadata != null && score.Metadata.Count > 0)
+            {
+                nameToMetadata[score.Name] = score.Metadata;
+            }
+        }
+
+        if (nameToScore.Count > 0)
+        {
+            scoreActivity?.SetTag("braintrust.scores", ToJson(nameToScore));
+            if (nameToMetadata.Count > 0)
+            {
+                scoreActivity?.SetTag("braintrust.metadata", ToJson(nameToMetadata));
+            }
+        }
+    }
+
     private static string ToJson(object obj)
     {
         return JsonSerializer.Serialize(obj, JsonOptions);
+    }
+
+    /// <summary>
+    /// Creates an OTel-compliant "exception" event for an Activity, following the
+    /// OpenTelemetry semantic conventions for exceptions
+    /// (https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-spans/).
+    /// </summary>
+    private static ActivityEvent CreateExceptionEvent(Exception ex)
+    {
+        var tags = new ActivityTagsCollection
+        {
+            { "exception.type", ex.GetType().FullName },
+            { "exception.message", ex.Message },
+            { "exception.stacktrace", ex.ToString() }
+        };
+        return new ActivityEvent("exception", tags: tags);
     }
 
     private static string CreateExperimentUrl(
