@@ -19,6 +19,35 @@ public interface IScorer<TInput, TOutput>
 
     /// <summary>
     /// Score the task result and return one or more scores.
+    /// If this method throws, the error will be recorded on the span and
+    /// <see cref="ScoreForScorerException"/> will be called as a fallback.
     /// </summary>
     Task<IReadOnlyList<Score>> Score(TaskResult<TInput, TOutput> taskResult);
+
+    /// <summary>
+    /// Provides fallback scores when the task function threw an exception.
+    /// Called instead of <see cref="Score"/> when the task itself failed.
+    /// </summary>
+    /// <remarks>
+    /// Default implementation returns a single score of 0.0.
+    /// Return an empty list to omit scoring entirely for this case.
+    /// If this method throws, the exception will propagate and abort the eval.
+    /// </remarks>
+    Task<IReadOnlyList<Score>> ScoreForTaskException(
+        Exception taskException,
+        DatasetCase<TInput, TOutput> datasetCase)
+        => Task.FromResult<IReadOnlyList<Score>>([new Score(Name, 0.0)]);
+
+    /// <summary>
+    /// Provides fallback scores when this scorer's <see cref="Score"/> method threw an exception.
+    /// </summary>
+    /// <remarks>
+    /// Default implementation returns a single score of 0.0.
+    /// Return an empty list to omit scoring entirely for this case.
+    /// If this method throws, the exception will propagate and abort the eval.
+    /// </remarks>
+    Task<IReadOnlyList<Score>> ScoreForScorerException(
+        Exception scorerException,
+        TaskResult<TInput, TOutput> taskResult)
+        => Task.FromResult<IReadOnlyList<Score>>([new Score(Name, 0.0)]);
 }
