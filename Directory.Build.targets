@@ -228,7 +228,7 @@ Console.WriteLine(version)%3B
 &lt;Project Sdk=&quot;Microsoft.NET.Sdk&quot;&gt;
   &lt;PropertyGroup&gt;
     &lt;OutputType&gt;Exe&lt;/OutputType&gt;
-    &lt;TargetFramework&gt;net8.0&lt;/TargetFramework&gt;
+    &lt;TargetFramework&gt;$(TargetFramework)&lt;/TargetFramework&gt;
     &lt;EnableDefaultItems&gt;false&lt;/EnableDefaultItems&gt;
   &lt;/PropertyGroup&gt;
   &lt;ItemGroup&gt;
