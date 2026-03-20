@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Braintrust.Sdk\Braintrust.Sdk.csproj" />
+    <ProjectReference Include="..\..\src\Braintrust.Sdk.OpenAI\Braintrust.Sdk.OpenAI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

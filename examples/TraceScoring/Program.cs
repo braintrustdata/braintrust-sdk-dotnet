@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Braintrust.Sdk.Eval;
-using Braintrust.Sdk.Instrumentation.OpenAI;
+using Braintrust.Sdk.OpenAI;
 using OpenAI;
 using OpenAI.Chat;
 
@@ -108,10 +108,10 @@ class FruitTraceScorer : ITracedScorer<string, Dictionary<string, int>>
 {
     public string Name => "llm_calls_valid";
 
-    public IReadOnlyList<Score> Score(TaskResult<string, Dictionary<string, int>> taskResult)
+    public Task<IReadOnlyList<Score>> Score(TaskResult<string, Dictionary<string, int>> taskResult)
     {
         // Fallback when no trace is available
-        return [new Score(Name, 0.5)];
+        return Task.FromResult<IReadOnlyList<Score>>([new Score(Name, 0.5)]);
     }
 
     public async Task<IReadOnlyList<Score>> ScoreAsync(
