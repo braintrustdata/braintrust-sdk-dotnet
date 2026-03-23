@@ -42,14 +42,14 @@ public class EvalTraceTest
         //   user   "And 3+3?"      (new input in span2)
         //   assistant "6"          (output of span2)
         Assert.Equal(5, thread.Count);
-        Assert.Equal("system",    thread[0]["role"]);
-        Assert.Equal("user",      thread[1]["role"]);
+        Assert.Equal("system", thread[0]["role"]);
+        Assert.Equal("user", thread[1]["role"]);
         Assert.Equal("assistant", thread[2]["role"]);
-        Assert.Equal("4",         thread[2]["content"]);
-        Assert.Equal("user",      thread[3]["role"]);
-        Assert.Equal("And 3+3?",  thread[3]["content"]);
+        Assert.Equal("4", thread[2]["content"]);
+        Assert.Equal("user", thread[3]["role"]);
+        Assert.Equal("And 3+3?", thread[3]["content"]);
         Assert.Equal("assistant", thread[4]["role"]);
-        Assert.Equal("6",         thread[4]["content"]);
+        Assert.Equal("6", thread[4]["content"]);
     }
 
     [Fact]
@@ -72,11 +72,11 @@ public class EvalTraceTest
         {
             ["span_attributes"] = new { type = "llm" },
             ["start_time"] = startTime,
-            ["input"]  = new { messages },
+            ["input"] = new { messages },
             ["output"] = new { choices = new[] { new { message = reply } } }
         };
         var json = JsonSerializer.Serialize(obj);
-        var doc  = JsonDocument.Parse(json);
+        var doc = JsonDocument.Parse(json);
         return doc.RootElement.EnumerateObject()
             .ToDictionary(p => p.Name, p => p.Value.Clone());
     }
