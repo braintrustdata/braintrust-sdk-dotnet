@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Braintrust.Sdk.Api;
+using Braintrust.Sdk.Api.Internal;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Git;
 using Braintrust.Sdk.Trace;
@@ -25,6 +26,7 @@ public sealed class Eval<TInput, TOutput>
     private readonly string _experimentName;
     private readonly BraintrustConfig _config;
     private readonly IBraintrustApiClient _client;
+    private readonly IBtqlClient _btqlClient;
     private readonly OrganizationAndProjectInfo _orgAndProject;
     private readonly ActivitySource _activitySource;
     private readonly IDataset<TInput, TOutput> _dataset;
@@ -40,6 +42,7 @@ public sealed class Eval<TInput, TOutput>
         _experimentName = builder._experimentName;
         _config = builder._config ?? throw new ArgumentNullException(nameof(builder._config));
         _client = builder._apiClient ?? throw new ArgumentNullException(nameof(builder._apiClient));
+        _btqlClient = builder._btqlClient ?? throw new ArgumentNullException(nameof(builder._btqlClient));
         _orgAndProject = orgAndProject ?? throw new ArgumentNullException(nameof(orgAndProject));
 
         _activitySource = builder._activitySource ?? throw new ArgumentNullException(nameof(builder._activitySource));
@@ -164,7 +167,19 @@ public sealed class Eval<TInput, TOutput>
             {
                 // Task succeeded — record output and run all scorers in parallel, each in their own span
                 rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult!.Value.Result }));
-                await RunScorers(experimentId, rootActivity, taskResult!.Value).ConfigureAwait(false);
+
+                // Flush OTel spans to Braintrust before scoring so traced scorers can access them
+                var hasTracedScorers = _scorers.OfType<ITracedScorer<TInput, TOutput>>().Any();
+                if (hasTracedScorers)
+                {
+                    BraintrustTracing.ForceFlush();
+                }
+
+                // Create a lazy trace object backed by BTQL (only queries API when first accessed)
+                var rootSpanId = rootActivity.TraceId.ToHexString();
+                var trace = new EvalTrace(ct => _btqlClient.QuerySpansAsync(experimentId, rootSpanId, ct));
+
+                await RunScorers(experimentId, rootActivity, taskResult!.Value, trace).ConfigureAwait(false);
             }
             else
             {
@@ -220,16 +235,17 @@ public sealed class Eval<TInput, TOutput>
 
     /// <summary>
     /// Runs all scorers for a successful task result, each in their own score span.
-    /// Calls <see cref="IScorer{TInput,TOutput}.Score"/> and falls back to
-    /// <see cref="IScorer{TInput,TOutput}.ScoreForScorerException"/> on error.
+    /// Calls <see cref="IScorer{TInput,TOutput}.Score"/> (or <see cref="ITracedScorer{TInput,TOutput}.ScoreAsync"/>
+    /// for traced scorers) and falls back to <see cref="IScorer{TInput,TOutput}.ScoreForScorerException"/> on error.
     /// </summary>
     private async Task RunScorers(
         string experimentId,
         Activity rootActivity,
-        TaskResult<TInput, TOutput> taskResult)
+        TaskResult<TInput, TOutput> taskResult,
+        EvalTrace trace)
     {
         var scorerTasks = _scorers.Select(scorer =>
-            RunSingleScorer(experimentId, rootActivity, scorer, taskResult));
+            RunSingleScorer(experimentId, rootActivity, scorer, taskResult, trace));
         await Task.WhenAll(scorerTasks).ConfigureAwait(false);
     }
 
@@ -237,7 +253,8 @@ public sealed class Eval<TInput, TOutput>
         string experimentId,
         Activity rootActivity,
         IScorer<TInput, TOutput> scorer,
-        TaskResult<TInput, TOutput> taskResult)
+        TaskResult<TInput, TOutput> taskResult,
+        EvalTrace trace)
     {
         var scoreActivity = _activitySource.StartActivity($"score:{scorer.Name}");
         scoreActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
@@ -250,7 +267,14 @@ public sealed class Eval<TInput, TOutput>
             IReadOnlyList<Score> scores;
             try
             {
-                scores = await scorer.Score(taskResult).ConfigureAwait(false);
+                if (scorer is ITracedScorer<TInput, TOutput> tracedScorer)
+                {
+                    scores = await tracedScorer.Score(taskResult, trace).ConfigureAwait(false);
+                }
+                else
+                {
+                    scores = await scorer.Score(taskResult).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
@@ -358,6 +382,7 @@ public sealed class Eval<TInput, TOutput>
         internal string _experimentName = "unnamed-dotnet-eval";
         internal BraintrustConfig? _config;
         internal IBraintrustApiClient? _apiClient;
+        internal IBtqlClient? _btqlClient;
         internal string? _projectId;
         internal ActivitySource? _activitySource;
         internal IDataset<TInput, TOutput>? _dataset;
@@ -379,6 +404,7 @@ public sealed class Eval<TInput, TOutput>
             _activitySource ??= BraintrustTracing.GetActivitySource();
             _projectId ??= _config.DefaultProjectId;
             _apiClient ??= BraintrustApiClient.Of(_config);
+            _btqlClient ??= new BtqlClient(_config);
 
             if (_scorers.Count == 0)
             {
@@ -456,6 +482,16 @@ public sealed class Eval<TInput, TOutput>
         public Builder ApiClient(IBraintrustApiClient apiClient)
         {
             _apiClient = apiClient;
+            return this;
+        }
+
+        /// <summary>
+        /// Set the BTQL client (used to retrieve trace spans for ITracedScorer).
+        /// Primarily useful for testing.
+        /// </summary>
+        internal Builder BtqlClient(IBtqlClient btqlClient)
+        {
+            _btqlClient = btqlClient;
             return this;
         }
 

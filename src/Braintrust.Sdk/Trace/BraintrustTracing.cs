@@ -22,6 +22,8 @@ public static class BraintrustTracing
     private static readonly Lazy<ActivitySource> _activitySource = new Lazy<ActivitySource>(
         () => new ActivitySource(InstrumentationName, InstrumentationVersion));
 
+    private static volatile TracerProvider? _currentProvider;
+
 
     /// <summary>
     /// Set up an OpenTelemetry tracer provier with Braintrust configuration.
@@ -40,6 +42,7 @@ public static class BraintrustTracing
         logger.Dispose(); // not used
 
         var provider = tracerBuilder.Build();
+        _currentProvider = provider;
         AppDomain.CurrentDomain.ProcessExit += (sender, e) =>
         {
             try
@@ -84,6 +87,14 @@ public static class BraintrustTracing
             })
             .SetSampler(new AlwaysOnSampler());
     }
+
+    /// <summary>
+    /// Flush all pending spans to Braintrust.
+    /// Returns true if the flush completed within the timeout, false otherwise.
+    /// Returns true if no TracerProvider has been created.
+    /// </summary>
+    public static bool ForceFlush(int timeoutMilliseconds = 10000)
+        => _currentProvider?.ForceFlush(timeoutMilliseconds) ?? true;
 
     /// <summary>
     /// Get the singleton ActivitySource for instrumentation.

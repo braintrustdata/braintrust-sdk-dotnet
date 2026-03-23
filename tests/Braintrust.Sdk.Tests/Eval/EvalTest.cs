@@ -305,6 +305,183 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
+    public async Task TracedScorerReceivesEvalTrace()
+    {
+        // Arrange
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var spans = new List<IReadOnlyDictionary<string, JsonElement>>
+        {
+            MockBtqlClient.MakeSpan("task"),
+            MockBtqlClient.MakeSpan("llm")
+        };
+        var mockBtqlClient = new MockBtqlClient(spans);
+
+        EvalTrace? receivedTrace = null;
+        var tracedScorer = new TestTracedScorer("traced_scorer", (taskResult, trace) =>
+        {
+            receivedTrace = trace;
+            return Task.FromResult<IReadOnlyList<Score>>([new Score("traced_scorer", 1.0)]);
+        });
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-traced")
+            .Config(config)
+            .ApiClient(mockClient)
+            .BtqlClient(mockBtqlClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(tracedScorer)
+            .BuildAsync();
+
+        // Act
+        await eval.RunAsync();
+
+        // Assert: traced scorer received a non-null EvalTrace
+        Assert.NotNull(receivedTrace);
+    }
+
+    [Fact]
+    public async Task TracedScorerCanAccessSpansViaTrace()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        var spans = new List<IReadOnlyDictionary<string, JsonElement>>
+        {
+            MockBtqlClient.MakeSpan("task"),
+            MockBtqlClient.MakeSpan("llm")
+        };
+        var mockBtqlClient = new MockBtqlClient(spans);
+
+        IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>? receivedSpans = null;
+        var tracedScorer = new TestTracedScorer("span_checker", async (taskResult, trace) =>
+        {
+            receivedSpans = await trace.GetSpansAsync();
+            return [new Score("span_checker", 1.0)];
+        });
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-spans")
+            .Config(config)
+            .ApiClient(mockClient)
+            .BtqlClient(mockBtqlClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(tracedScorer)
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        Assert.NotNull(receivedSpans);
+        Assert.Equal(2, receivedSpans.Count);
+        // BtqlClient was queried exactly once for this eval case
+        Assert.Equal(1, mockBtqlClient.QueryCount);
+    }
+
+    [Fact]
+    public async Task TracedScorerSpansAreLazilyFetched()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+        var mockBtqlClient = new MockBtqlClient();
+
+        // Scorer that does NOT access the trace
+        var tracedScorer = new TestTracedScorer("no_access", (taskResult, trace) =>
+        {
+            // Don't call trace.GetSpansAsync() - just return a score
+            return Task.FromResult<IReadOnlyList<Score>>([new Score("no_access", 0.5)]);
+        });
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-lazy")
+            .Config(config)
+            .ApiClient(mockClient)
+            .BtqlClient(mockBtqlClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(tracedScorer)
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        // BTQL was NOT queried because scorer never accessed the trace
+        Assert.Equal(0, mockBtqlClient.QueryCount);
+    }
+
+    [Fact]
+    public async Task NonTracedScorerStillWorksAfterTracedScorerAdded()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+        var mockBtqlClient = new MockBtqlClient();
+
+        var basicScorer = new FunctionScorer<string, string>("basic", (_, _) => 1.0);
+        var tracedScorer = new TestTracedScorer("traced", (taskResult, trace) =>
+            Task.FromResult<IReadOnlyList<Score>>([new Score("traced", 0.9)]));
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-mixed-scorers")
+            .Config(config)
+            .ApiClient(mockClient)
+            .BtqlClient(mockBtqlClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(basicScorer, tracedScorer)
+            .BuildAsync();
+
+        // Should run without error - both scorer types work together
+        var result = await eval.RunAsync();
+        Assert.NotNull(result.ExperimentUrl);
+    }
+
+    [Fact]
+    public async Task BasicScorerContinuesToWorkWithoutBtqlClient()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        var mockClient = new MockBraintrustApiClient();
+
+        // No traced scorers: BtqlClient is created but never queried
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-basic-only")
+            .Config(config)
+            .ApiClient(mockClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(new FunctionScorer<string, string>("basic", (_, _) => 1.0))
+            .BuildAsync();
+
+        var result = await eval.RunAsync();
+        Assert.NotNull(result.ExperimentUrl);
+    }
+
+    [Fact]
     public async Task ScorerCreatesValidScore()
     {
         var scorer = new FunctionScorer<string, string>("test_scorer", (expected, actual) => expected == actual ? 1.0 : 0.0);
