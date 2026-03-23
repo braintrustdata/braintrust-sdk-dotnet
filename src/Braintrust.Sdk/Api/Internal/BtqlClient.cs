@@ -86,11 +86,11 @@ internal class BtqlClient : IBtqlClient
 
         if (lastResponse == null || lastResponse.Data.Count == 0)
         {
-            return Array.Empty<IReadOnlyDictionary<string, JsonElement>>();
+            return [];
         }
 
         return lastResponse.Data
-            .Select(d => (IReadOnlyDictionary<string, JsonElement>)d)
+            .Cast<IReadOnlyDictionary<string, JsonElement>>()
             .ToList();
     }
 

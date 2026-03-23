@@ -27,6 +27,8 @@ internal class MockBtqlClient : IBtqlClient
         return Task.FromResult(_spans);
     }
 
+    public void Dispose() { }
+
     /// <summary>
     /// Helper to build a span dictionary from JSON for tests.
     /// </summary>

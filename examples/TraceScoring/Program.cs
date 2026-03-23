@@ -70,11 +70,11 @@ class Program
             .Name($"trace-scoring-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")
             .Tags("trace-scoring", "dotnet-sdk", "multi-call")
             .Cases(
-                new DatasetCase<string, Dictionary<string, int>>(
+                DatasetCase.Of(
                     "apple, banana, apple, orange, apple",
                     new Dictionary<string, int> { ["apple"] = 3, ["banana"] = 1, ["orange"] = 1 }
                 ),
-                new DatasetCase<string, Dictionary<string, int>>(
+                DatasetCase.Of(
                     "cherry, mango, cherry",
                     new Dictionary<string, int> { ["cherry"] = 2, ["mango"] = 1 }
                 )
@@ -114,7 +114,7 @@ class FruitTraceScorer : ITracedScorer<string, Dictionary<string, int>>
         return Task.FromResult<IReadOnlyList<Score>>([new Score(Name, 0.5)]);
     }
 
-    public async Task<IReadOnlyList<Score>> ScoreAsync(
+    public async Task<IReadOnlyList<Score>> Score(
         TaskResult<string, Dictionary<string, int>> taskResult,
         EvalTrace trace)
     {

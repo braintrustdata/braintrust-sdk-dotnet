@@ -169,7 +169,7 @@ public sealed class Eval<TInput, TOutput>
                 rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult!.Value.Result }));
 
                 // Flush OTel spans to Braintrust before scoring so traced scorers can access them
-                var hasTracedScorers = _scorers.Any(s => s is ITracedScorer<TInput, TOutput>);
+                var hasTracedScorers = _scorers.OfType<ITracedScorer<TInput, TOutput>>().Any();
                 if (hasTracedScorers)
                 {
                     BraintrustTracing.ForceFlush();
@@ -269,7 +269,7 @@ public sealed class Eval<TInput, TOutput>
             {
                 if (scorer is ITracedScorer<TInput, TOutput> tracedScorer)
                 {
-                    scores = await tracedScorer.ScoreAsync(taskResult, trace).ConfigureAwait(false);
+                    scores = await tracedScorer.Score(taskResult, trace).ConfigureAwait(false);
                 }
                 else
                 {

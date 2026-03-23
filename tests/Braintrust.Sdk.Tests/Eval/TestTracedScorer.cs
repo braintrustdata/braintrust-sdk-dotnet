@@ -27,7 +27,7 @@ internal class TestTracedScorer<TInput, TOutput> : ITracedScorer<TInput, TOutput
         throw new InvalidOperationException($"TracedScorer '{Name}' must be called via ScoreAsync");
     }
 
-    public Task<IReadOnlyList<Score>> ScoreAsync(TaskResult<TInput, TOutput> taskResult, EvalTrace trace)
+    public Task<IReadOnlyList<Score>> Score(TaskResult<TInput, TOutput> taskResult, EvalTrace trace)
     {
         return _scoreFn(taskResult, trace);
     }
