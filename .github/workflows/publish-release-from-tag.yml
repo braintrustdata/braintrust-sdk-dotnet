@@ -112,6 +112,12 @@ jobs:
             -p:PackageVersion="$VERSION" \
             -p:Version="$VERSION" \
             --output ./artifacts
+          dotnet pack src/Braintrust.Sdk.AgentFramework/Braintrust.Sdk.AgentFramework.csproj \
+            --configuration Release \
+            --no-build \
+            -p:PackageVersion="$VERSION" \
+            -p:Version="$VERSION" \
+            --output ./artifacts
 
       - name: Find built artifacts
         id: find-artifacts
@@ -125,6 +131,8 @@ jobs:
           OPENAI_SNUPKG=$(find ./artifacts -name "Braintrust.Sdk.OpenAI.${VERSION}.snupkg" | head -1)
           ANTHROPIC_NUPKG=$(find ./artifacts -name "Braintrust.Sdk.Anthropic.${VERSION}.nupkg" | head -1)
           ANTHROPIC_SNUPKG=$(find ./artifacts -name "Braintrust.Sdk.Anthropic.${VERSION}.snupkg" | head -1)
+          AGENTFRAMEWORK_NUPKG=$(find ./artifacts -name "Braintrust.Sdk.AgentFramework.${VERSION}.nupkg" | head -1)
+          AGENTFRAMEWORK_SNUPKG=$(find ./artifacts -name "Braintrust.Sdk.AgentFramework.${VERSION}.snupkg" | head -1)
 
           echo "nupkg=$NUPKG" >> $GITHUB_OUTPUT
           if [[ -n "$SNUPKG" ]]; then
@@ -137,6 +145,10 @@ jobs:
           echo "anthropic_nupkg=$ANTHROPIC_NUPKG" >> $GITHUB_OUTPUT
           if [[ -n "$ANTHROPIC_SNUPKG" ]]; then
             echo "anthropic_snupkg=$ANTHROPIC_SNUPKG" >> $GITHUB_OUTPUT
+          fi
+          echo "agentframework_nupkg=$AGENTFRAMEWORK_NUPKG" >> $GITHUB_OUTPUT
+          if [[ -n "$AGENTFRAMEWORK_SNUPKG" ]]; then
+            echo "agentframework_snupkg=$AGENTFRAMEWORK_SNUPKG" >> $GITHUB_OUTPUT
           fi
 
           echo "Found artifacts:"
@@ -151,6 +163,10 @@ jobs:
           echo "  Anthropic NuGet package: $ANTHROPIC_NUPKG"
           if [[ -n "$ANTHROPIC_SNUPKG" ]]; then
             echo "  Anthropic symbols package: $ANTHROPIC_SNUPKG"
+          fi
+          echo "  AgentFramework NuGet package: $AGENTFRAMEWORK_NUPKG"
+          if [[ -n "$AGENTFRAMEWORK_SNUPKG" ]]; then
+            echo "  AgentFramework symbols package: $AGENTFRAMEWORK_SNUPKG"
           fi
 
       - name: Create GitHub Release
@@ -169,7 +185,9 @@ jobs:
             "${{ steps.find-artifacts.outputs.openai_nupkg }}" \
             "${{ steps.find-artifacts.outputs.openai_snupkg }}" \
             "${{ steps.find-artifacts.outputs.anthropic_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.anthropic_snupkg }}"; do
+            "${{ steps.find-artifacts.outputs.anthropic_snupkg }}" \
+            "${{ steps.find-artifacts.outputs.agentframework_nupkg }}" \
+            "${{ steps.find-artifacts.outputs.agentframework_snupkg }}"; do
             if [[ -n "$artifact" && -f "$artifact" ]]; then
               gh release upload "$TAG" "$artifact"
             fi
@@ -188,7 +206,8 @@ jobs:
           for NUPKG in \
             "${{ steps.find-artifacts.outputs.nupkg }}" \
             "${{ steps.find-artifacts.outputs.openai_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.anthropic_nupkg }}"; do
+            "${{ steps.find-artifacts.outputs.anthropic_nupkg }}" \
+            "${{ steps.find-artifacts.outputs.agentframework_nupkg }}"; do
             if [[ -z "$NUPKG" || ! -f "$NUPKG" ]]; then
               echo "Error: NuGet package not found: $NUPKG"
               exit 1
@@ -209,3 +228,4 @@ jobs:
           echo "  https://www.nuget.org/packages/Braintrust.Sdk/$VERSION"
           echo "  https://www.nuget.org/packages/Braintrust.Sdk.OpenAI/$VERSION"
           echo "  https://www.nuget.org/packages/Braintrust.Sdk.Anthropic/$VERSION"
+          echo "  https://www.nuget.org/packages/Braintrust.Sdk.AgentFramework/$VERSION"
