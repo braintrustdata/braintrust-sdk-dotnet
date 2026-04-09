@@ -9,7 +9,7 @@ This library provides tools for **evaluating** and **tracing** AI applications i
 
 - **Evaluate** your AI models with custom test cases and scoring functions
 - **Trace** LLM calls and monitor AI application performance with OpenTelemetry
-- **Integrate** seamlessly with OpenAI, Anthropic, and other LLM providers
+- **Integrate** seamlessly with OpenAI, Anthropic, Microsoft Agent Framework, and other LLM providers
 
 This SDK is currently in BETA status and APIs may change.
 
@@ -35,13 +35,20 @@ dotnet add package Braintrust.Sdk.OpenAI
 dotnet add package Braintrust.Sdk.Anthropic
 ```
 
+### Microsoft Agent Framework integration
+
+```bash
+dotnet add package Braintrust.Sdk.AgentFramework
+```
+
 ### Or add to your .csproj file
 
 ```xml
 <ItemGroup>
   <PackageReference Include="Braintrust.Sdk" Version="version goes here" />
-  <PackageReference Include="Braintrust.Sdk.OpenAI" Version="version goes here" />   <!-- optional -->
-  <PackageReference Include="Braintrust.Sdk.Anthropic" Version="version goes here" /> <!-- optional -->
+  <PackageReference Include="Braintrust.Sdk.OpenAI" Version="version goes here" />          <!-- optional -->
+  <PackageReference Include="Braintrust.Sdk.Anthropic" Version="version goes here" />        <!-- optional -->
+  <PackageReference Include="Braintrust.Sdk.AgentFramework" Version="version goes here" />   <!-- optional -->
 </ItemGroup>
 ```
 
@@ -60,6 +67,7 @@ Install the dotnet 8 framework
 ```bash
 ls -l examples/
 # >>> outputs
+ AgentFrameworkInstrumentation/
  EvalExample/
  OpenAIInstrumentation/
  SimpleOpenTelemetry/
