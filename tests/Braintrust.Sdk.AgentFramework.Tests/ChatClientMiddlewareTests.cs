@@ -10,7 +10,7 @@ public class ChatClientMiddlewareTests
     private static readonly ActivitySource TestSource = new("Braintrust.Tests.ChatClient");
 
     [Fact]
-    public async Task UseBraintrustTracing_CreatesLlmSpan()
+    public async Task UseBraintrustLLMTracing_CreatesLlmSpan()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -24,7 +24,7 @@ public class ChatClientMiddlewareTests
 
         var innerClient = new TestChatClient("LLM response");
         var tracedClient = new ChatClientBuilder(innerClient)
-            .UseBraintrustTracing(TestSource)
+            .UseBraintrustLLMTracing(TestSource)
             .Build();
 
         // Act
@@ -44,7 +44,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseBraintrustTracing_CapturesInputOutput()
+    public async Task UseBraintrustLLMTracing_CapturesInputOutput()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -58,7 +58,7 @@ public class ChatClientMiddlewareTests
 
         var innerClient = new TestChatClient("The answer is 42");
         var tracedClient = new ChatClientBuilder(innerClient)
-            .UseBraintrustTracing(TestSource, captureMessageContent: true)
+            .UseBraintrustLLMTracing(TestSource, captureMessageContent: true)
             .Build();
 
         // Act
@@ -78,7 +78,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseBraintrustTracing_CapturesTimingMetrics()
+    public async Task UseBraintrustLLMTracing_CapturesTimingMetrics()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -92,7 +92,7 @@ public class ChatClientMiddlewareTests
 
         var innerClient = new TestChatClient();
         var tracedClient = new ChatClientBuilder(innerClient)
-            .UseBraintrustTracing(TestSource)
+            .UseBraintrustLLMTracing(TestSource)
             .Build();
 
         // Act
@@ -107,7 +107,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseBraintrustTracing_RecordsErrorOnException()
+    public async Task UseBraintrustLLMTracing_RecordsErrorOnException()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -121,7 +121,7 @@ public class ChatClientMiddlewareTests
 
         var innerClient = new TestChatClient(throwException: new HttpRequestException("API error"));
         var tracedClient = new ChatClientBuilder(innerClient)
-            .UseBraintrustTracing(TestSource)
+            .UseBraintrustLLMTracing(TestSource)
             .Build();
 
         // Act & Assert
@@ -134,7 +134,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseBraintrustTracing_SkipsContentWhenDisabled()
+    public async Task UseBraintrustLLMTracing_SkipsContentWhenDisabled()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -148,7 +148,7 @@ public class ChatClientMiddlewareTests
 
         var innerClient = new TestChatClient("Secret response");
         var tracedClient = new ChatClientBuilder(innerClient)
-            .UseBraintrustTracing(TestSource, captureMessageContent: false)
+            .UseBraintrustLLMTracing(TestSource, captureMessageContent: false)
             .Build();
 
         // Act
@@ -162,7 +162,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseAllBraintrustTracing_CreatesBothLlmAndFunctionSpans()
+    public async Task UseBraintrustTracing_CreatesBothLlmAndFunctionSpans()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -177,7 +177,7 @@ public class ChatClientMiddlewareTests
         var getWeather = AIFunctionFactory.Create((string city) => $"Sunny in {city}", "GetWeather");
         var mockClient = new ToolCallingChatClient(getWeather);
         var tracedClient = new ChatClientBuilder(mockClient)
-            .UseAllBraintrustTracing(TestSource)
+            .UseBraintrustTracing(TestSource)
             .Build();
 
         // Act
@@ -198,7 +198,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseBraintrustTracing_StreamingCreatesSpan()
+    public async Task UseBraintrustLLMTracing_StreamingCreatesSpan()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -212,7 +212,7 @@ public class ChatClientMiddlewareTests
 
         var innerClient = new TestChatClient("Streamed response");
         var tracedClient = new ChatClientBuilder(innerClient)
-            .UseBraintrustTracing(TestSource)
+            .UseBraintrustLLMTracing(TestSource)
             .Build();
 
         // Act

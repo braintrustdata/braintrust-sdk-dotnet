@@ -27,7 +27,7 @@ class Program
         var openAIClient = new OpenAI.OpenAIClient(openAIApiKey);
         var chatClient = openAIClient.GetChatClient("gpt-4o-mini").AsIChatClient()
             .AsBuilder()
-            .UseAllBraintrustTracing(activitySource)       // LLM + function-level tracing
+            .UseBraintrustTracing(activitySource)          // LLM + function-level tracing
             .Build();
 
         // Define a tool
@@ -42,7 +42,7 @@ class Program
                 instructions: "You are a helpful assistant. Use tools when appropriate.",
                 name: "WeatherAgent",
                 tools: [getWeather])
-            .WithBraintrustTracing(activitySource); // Agent-level tracing
+            .WithBraintrustAgentTracing(activitySource); // Agent-level tracing
 
         using (var rootActivity = activitySource.StartActivity("agent-framework-instrumentation-example"))
         {
