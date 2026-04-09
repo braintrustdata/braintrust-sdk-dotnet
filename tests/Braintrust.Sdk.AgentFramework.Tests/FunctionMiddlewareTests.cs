@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Braintrust.Sdk.AgentFramework;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Xunit;
 
@@ -46,6 +47,69 @@ public class FunctionMiddlewareTests
         var spanType = funcActivity.GetTagItem("braintrust.span_attributes")?.ToString();
         Assert.Contains("\"type\":\"function_call\"", spanType);
         Assert.Equal("GetWeather", funcActivity.GetTagItem("function.name"));
+    }
+
+    [Fact]
+    public async Task FullPipeline_SpanHierarchyIsCorrect()
+    {
+        // Arrange
+        // Verifies the full expected span hierarchy when all three tracing levels are used together:
+        //
+        //   agent:WeatherAgent          ← WithBraintrustAgentTracing  (child of root)
+        //     Chat Completion           ← UseBraintrustLLMTracing     (first LLM call, requests tool)
+        //     function:GetWeather       ← UseBraintrustFunctionTracing (sibling of LLM spans, child of agent)
+        //     Chat Completion           ← UseBraintrustLLMTracing     (second LLM call, final answer)
+
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Braintrust.Tests.Function",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activity => activities.Add(activity)
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        var getWeather = AIFunctionFactory.Create((string city) => $"Sunny in {city}", "GetWeather");
+        var mockClient = new ToolCallingChatClient(getWeather);
+        var chatClient = new ChatClientBuilder(mockClient)
+            .UseBraintrustTracing(TestSource)
+            .Build();
+        var agent = new ChatClientAgent(chatClient, instructions: "You are a helpful assistant", name: "WeatherAgent", tools: [getWeather])
+            .WithBraintrustAgentTracing(TestSource);
+
+        // Act — wrap in a root span to give the agent span a known parent
+        using var rootActivity = TestSource.StartActivity("root");
+        var session = await agent.CreateSessionAsync();
+        await agent.RunAsync("What's the weather in Seattle?", session);
+        rootActivity?.Stop();
+
+        // Assert — all spans are collected, confirm the full hierarchy:
+        //
+        //   root
+        //     agent:WeatherAgent
+        //       Chat Completion      ← first LLM call (requests the tool)
+        //       function:GetWeather  ← sibling of LLM spans, child of agent
+        //       Chat Completion      ← second LLM call (final answer)
+
+        var agentActivity = activities.Single(a => a.OperationName == "agent:WeatherAgent");
+        var llmActivities = activities.Where(a => a.OperationName == "Chat Completion").ToList();
+        var funcActivity = activities.Single(a => a.OperationName.StartsWith("function:"));
+
+        // Agent span is a child of root
+        Assert.Equal(rootActivity!.Context.SpanId, agentActivity.ParentSpanId);
+
+        // Each individual LLM call is a direct child of the agent span
+        Assert.All(llmActivities, a => Assert.Equal(agentActivity.Context.SpanId, a.ParentSpanId));
+
+        // Two LLM calls: one requesting the tool, one after the tool result
+        Assert.Equal(2, llmActivities.Count);
+
+        // Function span is a sibling of the LLM spans — child of agent, NOT nested inside an LLM span
+        Assert.Equal(agentActivity.Context.SpanId, funcActivity.ParentSpanId);
+        Assert.DoesNotContain(llmActivities, llm => llm.Context.SpanId == funcActivity.ParentSpanId);
+
+        // Function span is GetWeather
+        Assert.Equal("function:GetWeather", funcActivity.OperationName);
     }
 
     [Fact]

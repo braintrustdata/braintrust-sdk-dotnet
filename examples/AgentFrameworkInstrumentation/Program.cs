@@ -27,12 +27,16 @@ class Program
         var openAIClient = new OpenAI.OpenAIClient(openAIApiKey);
         var chatClient = openAIClient.GetChatClient("gpt-4o-mini").AsIChatClient()
             .AsBuilder()
-            .UseAllBraintrustTracing(activitySource)       // LLM + function-level tracing
+            .UseBraintrustTracing(activitySource)          // LLM + function-level tracing
             .Build();
 
         // Define a tool
         var getWeather = AIFunctionFactory.Create(
-            (string city) => $"The weather in {city} is sunny, 72°F.",
+            async (string city) =>
+            {
+                await Task.Delay(3000);
+                return $"The weather in {city} is sunny, 72°F.";
+            },
             "GetWeather",
             "Gets the current weather for a city.");
 
@@ -42,7 +46,7 @@ class Program
                 instructions: "You are a helpful assistant. Use tools when appropriate.",
                 name: "WeatherAgent",
                 tools: [getWeather])
-            .WithBraintrustTracing(activitySource); // Agent-level tracing
+            .WithBraintrustAgentTracing(activitySource); // Agent-level tracing
 
         using (var rootActivity = activitySource.StartActivity("agent-framework-instrumentation-example"))
         {

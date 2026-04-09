@@ -11,7 +11,7 @@ public class AgentMiddlewareTests
     private static readonly ActivitySource TestSource = new("Braintrust.Tests.AgentFramework");
 
     [Fact]
-    public async Task WithBraintrustTracing_CreatesSpanForAgentRun()
+    public async Task WithBraintrustAgentTracing_CreatesSpanForAgentRun()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -25,7 +25,7 @@ public class AgentMiddlewareTests
 
         var mockChatClient = new TestChatClient();
         var agent = new ChatClientAgent(mockChatClient, instructions: "You are a test agent", name: "TestAgent");
-        var tracedAgent = agent.WithBraintrustTracing(TestSource);
+        var tracedAgent = agent.WithBraintrustAgentTracing(TestSource);
 
         // Act
         var session = await tracedAgent.CreateSessionAsync();
@@ -45,7 +45,7 @@ public class AgentMiddlewareTests
     }
 
     [Fact]
-    public async Task WithBraintrustTracing_CapturesInputAndOutput()
+    public async Task WithBraintrustAgentTracing_CapturesInputAndOutput()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -59,7 +59,7 @@ public class AgentMiddlewareTests
 
         var mockChatClient = new TestChatClient("Test response");
         var agent = new ChatClientAgent(mockChatClient, instructions: "You are a test agent", name: "TestAgent");
-        var tracedAgent = agent.WithBraintrustTracing(TestSource, captureMessageContent: true);
+        var tracedAgent = agent.WithBraintrustAgentTracing(TestSource, captureMessageContent: true);
 
         // Act
         var session = await tracedAgent.CreateSessionAsync();
@@ -77,7 +77,7 @@ public class AgentMiddlewareTests
     }
 
     [Fact]
-    public async Task WithBraintrustTracing_RecordsErrorOnException()
+    public async Task WithBraintrustAgentTracing_RecordsErrorOnException()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -91,7 +91,7 @@ public class AgentMiddlewareTests
 
         var mockChatClient = new TestChatClient(throwException: new InvalidOperationException("Test error"));
         var agent = new ChatClientAgent(mockChatClient, instructions: "You are a test agent", name: "TestAgent");
-        var tracedAgent = agent.WithBraintrustTracing(TestSource);
+        var tracedAgent = agent.WithBraintrustAgentTracing(TestSource);
 
         // Act & Assert
         var session = await tracedAgent.CreateSessionAsync();
@@ -103,18 +103,18 @@ public class AgentMiddlewareTests
     }
 
     [Fact]
-    public void WithBraintrustTracing_ThrowsOnNullAgent()
+    public void WithBraintrustAgentTracing_ThrowsOnNullAgent()
     {
         AIAgent agent = null!;
-        Assert.Throws<ArgumentNullException>(() => agent.WithBraintrustTracing(TestSource));
+        Assert.Throws<ArgumentNullException>(() => agent.WithBraintrustAgentTracing(TestSource));
     }
 
     [Fact]
-    public void WithBraintrustTracing_ThrowsOnNullActivitySource()
+    public void WithBraintrustAgentTracing_ThrowsOnNullActivitySource()
     {
         var mockChatClient = new TestChatClient();
         var agent = new ChatClientAgent(mockChatClient, instructions: "You are a test agent", name: "TestAgent");
-        Assert.Throws<ArgumentNullException>(() => agent.WithBraintrustTracing(null!));
+        Assert.Throws<ArgumentNullException>(() => agent.WithBraintrustAgentTracing(null!));
     }
 }
 

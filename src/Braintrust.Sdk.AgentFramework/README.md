@@ -14,11 +14,11 @@ Provides tracing at three pipeline levels:
 using Braintrust.Sdk.AgentFramework;
 
 // Agent-level tracing
-var tracedAgent = agent.WithBraintrustTracing();
+var tracedAgent = agent.WithBraintrustAgentTracing();
 
-// Chat client-level tracing
+// Chat client-level (LLM) tracing
 var chatClient = new ChatClientBuilder(innerClient)
-    .UseBraintrustTracing()
+    .UseBraintrustLLMTracing()
     .Build();
 
 // Function call tracing
@@ -29,8 +29,7 @@ var chatClient = new ChatClientBuilder(innerClient)
 // All three combined
 var chatClient = new ChatClientBuilder(innerClient)
     .UseBraintrustTracing()
-    .UseBraintrustFunctionTracing()
     .Build();
 var agent = new ChatClientAgent(chatClient, "MyAgent")
-    .WithBraintrustTracing();
+    .WithBraintrustAgentTracing();
 ```
