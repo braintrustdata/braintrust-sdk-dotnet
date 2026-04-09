@@ -162,6 +162,42 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
+    public async Task UseAllBraintrustTracing_CreatesBothLlmAndFunctionSpans()
+    {
+        // Arrange
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Braintrust.Tests.ChatClient",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activity => activities.Add(activity)
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        var getWeather = AIFunctionFactory.Create((string city) => $"Sunny in {city}", "GetWeather");
+        var mockClient = new ToolCallingChatClient(getWeather);
+        var tracedClient = new ChatClientBuilder(mockClient)
+            .UseAllBraintrustTracing(TestSource)
+            .Build();
+
+        // Act
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.User, "What's the weather in Seattle?")
+        };
+        var options = new ChatOptions { Tools = [getWeather] };
+        await tracedClient.GetResponseAsync(messages, options);
+
+        // Assert - should have both LLM and function spans
+        var llmActivities = activities.Where(a => a.OperationName == "Chat Completion").ToList();
+        Assert.NotEmpty(llmActivities);
+
+        var funcActivity = activities.FirstOrDefault(a => a.OperationName.StartsWith("function:"));
+        Assert.NotNull(funcActivity);
+        Assert.Contains("GetWeather", funcActivity.OperationName);
+    }
+
+    [Fact]
     public async Task UseBraintrustTracing_StreamingCreatesSpan()
     {
         // Arrange

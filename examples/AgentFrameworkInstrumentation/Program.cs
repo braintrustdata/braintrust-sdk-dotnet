@@ -27,8 +27,7 @@ class Program
         var openAIClient = new OpenAI.OpenAIClient(openAIApiKey);
         var chatClient = openAIClient.GetChatClient("gpt-4o-mini").AsIChatClient()
             .AsBuilder()
-            .UseBraintrustTracing(activitySource)          // LLM-level tracing
-            .UseBraintrustFunctionTracing(activitySource)   // Function-level tracing
+            .UseAllBraintrustTracing(activitySource)       // LLM + function-level tracing
             .Build();
 
         // Define a tool
