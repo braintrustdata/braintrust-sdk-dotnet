@@ -32,7 +32,11 @@ class Program
 
         // Define a tool
         var getWeather = AIFunctionFactory.Create(
-            (string city) => $"The weather in {city} is sunny, 72°F.",
+            async (string city) =>
+            {
+                await Task.Delay(3000);
+                return $"The weather in {city} is sunny, 72°F.";
+            },
             "GetWeather",
             "Gets the current weather for a city.");
 

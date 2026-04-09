@@ -20,7 +20,14 @@ internal static class BraintrustFunctionMiddleware
         return async (context, cancellationToken) =>
         {
             var functionName = context.Function?.Name ?? "unknown";
-            using var activity = activitySource.StartActivity($"function:{functionName}", ActivityKind.Internal);
+
+            // With LLM tracing sitting inside the function invocation middleware, the first LLM span
+            // has already closed by the time the function invoker runs. Activity.Current is therefore
+            // the agent span (or whatever the ambient parent is), which is exactly where we want the
+            // function span to hang — as a sibling of the LLM spans, not a child.
+            using var activity = activitySource.StartActivity(
+                $"function:{functionName}",
+                ActivityKind.Internal);
             var startTime = DateTime.UtcNow;
 
             try

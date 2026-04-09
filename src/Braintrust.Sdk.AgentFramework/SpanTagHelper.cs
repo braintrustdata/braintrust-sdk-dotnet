@@ -24,12 +24,7 @@ internal static class SpanTagHelper
     {
         try
         {
-            var input = messages.Select(m => new
-            {
-                role = m.Role.Value,
-                content = m.Text
-            });
-            activity.SetTag("braintrust.input_json", ToJson(input));
+            activity.SetTag("braintrust.input_json", ToJson(messages.Select(SerializeMessage)));
         }
         catch
         {
@@ -41,17 +36,45 @@ internal static class SpanTagHelper
     {
         try
         {
-            var output = messages.Select(m => new
-            {
-                role = m.Role.Value,
-                content = m.Text
-            });
-            activity.SetTag("braintrust.output_json", ToJson(output));
+            activity.SetTag("braintrust.output_json", ToJson(messages.Select(SerializeMessage)));
         }
         catch
         {
             // Ignore serialization errors
         }
+    }
+
+    /// <summary>
+    /// Serializes a ChatMessage to a JSON-friendly object, preserving all content types
+    /// (text, function calls, function results) rather than just the plain text.
+    /// </summary>
+    private static object SerializeMessage(ChatMessage m)
+    {
+        // If the message has only a single text part (the common case), use the simple form.
+        if (m.Contents.Count == 1 && m.Contents[0] is TextContent textOnly)
+            return new { role = m.Role.Value, content = textOnly.Text };
+
+        // Otherwise serialize each content part individually.
+        var parts = m.Contents.Select<AIContent, object>(c => c switch
+        {
+            TextContent text => new { type = "text", text = text.Text },
+            FunctionCallContent fc => new
+            {
+                type = "tool_use",
+                id = fc.CallId,
+                name = fc.Name,
+                input = fc.Arguments
+            },
+            FunctionResultContent fr => new
+            {
+                type = "tool_result",
+                tool_use_id = fr.CallId,
+                content = fr.Result?.ToString()
+            },
+            _ => new { type = c.GetType().Name }
+        });
+
+        return new { role = m.Role.Value, content = parts };
     }
 
     internal static void SetOutputText(Activity activity, string? text)

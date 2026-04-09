@@ -119,9 +119,12 @@ public static class BraintrustAgentFramework
         bool captureMessageContent = true,
         bool captureToolArguments = true)
     {
+        // Order matters: LLM tracing must be applied after (i.e. inner to) function tracing so that
+        // each individual LLM call gets its own span, rather than the entire tool-call loop
+        // (first LLM call + tool execution + second LLM call) being wrapped in one span.
         return builder
-            .UseBraintrustLLMTracing(activitySource, captureMessageContent)
-            .UseBraintrustFunctionTracing(activitySource, captureToolArguments);
+            .UseBraintrustFunctionTracing(activitySource, captureToolArguments)
+            .UseBraintrustLLMTracing(activitySource, captureMessageContent);
     }
 
     /// <summary>
