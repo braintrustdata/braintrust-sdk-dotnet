@@ -125,17 +125,25 @@ internal sealed class InstrumentedChatClient : ChatClient
         }
     }
 
-    // TODO: Override other methods as needed (CompleteChatStreaming, etc.)
+    // Note: Streaming (CompleteChatStreaming/CompleteChatStreamingAsync) is best instrumented
+    // via the IChatClient adapter path: chatClient.AsIChatClient() + Braintrust.Sdk.Extensions.AI.
+    // The raw OpenAI ChatClient streaming API returns AsyncCollectionResult which cannot be
+    // transparently wrapped without breaking the SSE response stream.
+
     private void TagActivity(Activity activity, double? timeToFirstToken = null)
     {
         activity.SetTag("provider", "openai");
+        activity.SetTag("gen_ai.operation.name", "chat");
+        activity.SetTag("gen_ai.provider.name", "openai");
         {
             var requestRaw = activity.GetBaggageItem("braintrust.http.request");
             if (requestRaw != null)
             {
                 var requestJson = JsonNode.Parse(requestRaw);
                 activity.SetTag("gen_ai.request.model", requestJson?["model"]?.ToString());
-                activity.SetTag("braintrust.input_json", requestJson?["messages"]?.ToString());
+                var messagesJson = requestJson?["messages"]?.ToString();
+                activity.SetTag("braintrust.input_json", messagesJson);
+                activity.SetTag("gen_ai.input.messages", messagesJson);
             }
         }
         {
@@ -144,7 +152,9 @@ internal sealed class InstrumentedChatClient : ChatClient
             {
                 var responseJson = JsonNode.Parse(responseRaw);
                 activity.SetTag("gen_ai.response.model", responseJson?["model"]?.ToString());
-                activity.SetTag("braintrust.output_json", responseJson?["choices"]?.ToString());
+                var choicesJson = responseJson?["choices"]?.ToString();
+                activity.SetTag("braintrust.output_json", choicesJson);
+                activity.SetTag("gen_ai.output.messages", choicesJson);
 
                 // Extract token usage metrics
                 var usage = responseJson?["usage"];
@@ -155,9 +165,15 @@ internal sealed class InstrumentedChatClient : ChatClient
                     var totalTokens = usage["total_tokens"]?.GetValue<int?>();
 
                     if (promptTokens.HasValue)
+                    {
                         activity.SetTag("braintrust.metrics.prompt_tokens", promptTokens.Value);
+                        activity.SetTag("gen_ai.usage.input_tokens", promptTokens.Value);
+                    }
                     if (completionTokens.HasValue)
+                    {
                         activity.SetTag("braintrust.metrics.completion_tokens", completionTokens.Value);
+                        activity.SetTag("gen_ai.usage.output_tokens", completionTokens.Value);
+                    }
                     if (totalTokens.HasValue)
                         activity.SetTag("braintrust.metrics.tokens", totalTokens.Value);
                 }

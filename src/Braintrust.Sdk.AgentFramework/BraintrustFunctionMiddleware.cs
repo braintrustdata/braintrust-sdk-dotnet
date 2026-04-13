@@ -35,7 +35,9 @@ internal static class BraintrustFunctionMiddleware
                 if (activity != null)
                 {
                     SpanTagHelper.SetSpanType(activity, "function_call");
+                    activity.SetTag("gen_ai.operation.name", "execute_tool");
                     activity.SetTag("function.name", functionName);
+                    activity.SetTag("gen_ai.tool.name", functionName);
                     activity.SetTag("function.iteration", context.Iteration);
                     activity.SetTag("function.call_index", context.FunctionCallIndex);
                     activity.SetTag("function.total_count", context.FunctionCount);
@@ -44,8 +46,9 @@ internal static class BraintrustFunctionMiddleware
                     {
                         try
                         {
-                            activity.SetTag("braintrust.input_json",
-                                SpanTagHelper.ToJson(context.Arguments));
+                            var argsJson = SpanTagHelper.ToJson(context.Arguments);
+                            activity.SetTag("braintrust.input_json", argsJson);
+                            activity.SetTag("gen_ai.tool.call.arguments", argsJson);
                         }
                         catch
                         {
@@ -75,8 +78,9 @@ internal static class BraintrustFunctionMiddleware
                     {
                         try
                         {
-                            activity.SetTag("braintrust.output_json",
-                                SpanTagHelper.ToJson(new { result }));
+                            var resultJson = SpanTagHelper.ToJson(new { result });
+                            activity.SetTag("braintrust.output_json", resultJson);
+                            activity.SetTag("gen_ai.tool.call.result", resultJson);
                         }
                         catch
                         {
