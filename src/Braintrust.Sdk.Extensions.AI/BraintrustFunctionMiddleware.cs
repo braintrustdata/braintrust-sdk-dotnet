@@ -1,40 +1,37 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenTelemetry.Trace;
 
-namespace Braintrust.Sdk.AgentFramework;
+namespace Braintrust.Sdk.Extensions.AI;
 
 /// <summary>
 /// Function calling middleware that wraps tool/function invocations with Braintrust tracing spans.
-/// Implemented as a configure action for FunctionInvokingChatClient.
+/// Creates dedicated execute_tool child spans with gen_ai.tool.* attributes — filling a gap
+/// that M.E.AI's UseOpenTelemetry() does not cover.
 /// </summary>
 internal static class BraintrustFunctionMiddleware
 {
-    /// <summary>
-    /// Creates a FunctionInvoker delegate that wraps function calls with Braintrust tracing.
-    /// The returned delegate should be set as the FunctionInvoker on a FunctionInvokingChatClient.
-    /// </summary>
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     internal static Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>
         CreateInvoker(ActivitySource activitySource, bool captureToolArguments, Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>? defaultInvoker)
     {
         return async (context, cancellationToken) =>
         {
             var functionName = context.Function?.Name ?? "unknown";
-
-            // With LLM tracing sitting inside the function invocation middleware, the first LLM span
-            // has already closed by the time the function invoker runs. Activity.Current is therefore
-            // the agent span (or whatever the ambient parent is), which is exactly where we want the
-            // function span to hang — as a sibling of the LLM spans, not a child.
-            using var activity = activitySource.StartActivity(
-                $"function:{functionName}",
-                ActivityKind.Internal);
+            using var activity = activitySource.StartActivity($"function:{functionName}", ActivityKind.Internal);
             var startTime = DateTime.UtcNow;
 
             try
             {
                 if (activity != null)
                 {
-                    SpanTagHelper.SetSpanType(activity, "function_call");
+                    activity.SetTag("braintrust.span_attributes", ToJson(new { type = "function_call" }));
                     activity.SetTag("gen_ai.operation.name", "execute_tool");
                     activity.SetTag("function.name", functionName);
                     activity.SetTag("gen_ai.tool.name", functionName);
@@ -46,7 +43,7 @@ internal static class BraintrustFunctionMiddleware
                     {
                         try
                         {
-                            var argsJson = SpanTagHelper.ToJson(context.Arguments);
+                            var argsJson = ToJson(context.Arguments);
                             activity.SetTag("braintrust.input_json", argsJson);
                             activity.SetTag("gen_ai.tool.call.arguments", argsJson);
                         }
@@ -78,7 +75,7 @@ internal static class BraintrustFunctionMiddleware
                     {
                         try
                         {
-                            var resultJson = SpanTagHelper.ToJson(new { result });
+                            var resultJson = ToJson(new { result });
                             activity.SetTag("braintrust.output_json", resultJson);
                             activity.SetTag("gen_ai.tool.call.result", resultJson);
                         }
@@ -106,5 +103,17 @@ internal static class BraintrustFunctionMiddleware
                 throw;
             }
         };
+    }
+
+    private static string? ToJson<T>(T obj)
+    {
+        try
+        {
+            return JsonSerializer.Serialize(obj, JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

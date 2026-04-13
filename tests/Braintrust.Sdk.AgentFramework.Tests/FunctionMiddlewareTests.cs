@@ -47,6 +47,10 @@ public class FunctionMiddlewareTests
         var spanType = funcActivity.GetTagItem("braintrust.span_attributes")?.ToString();
         Assert.Contains("\"type\":\"function_call\"", spanType);
         Assert.Equal("GetWeather", funcActivity.GetTagItem("function.name"));
+
+        // OTEL GenAI tool span attributes (Braintrust value-add — M.E.AI doesn't emit these)
+        Assert.Equal("execute_tool", funcActivity.GetTagItem("gen_ai.operation.name"));
+        Assert.Equal("GetWeather", funcActivity.GetTagItem("gen_ai.tool.name"));
     }
 
     [Fact]
@@ -146,6 +150,13 @@ public class FunctionMiddlewareTests
         var outputJson = funcActivity.GetTagItem("braintrust.output_json")?.ToString();
         Assert.NotNull(outputJson);
         Assert.Contains("Sunny", outputJson);
+
+        // OTEL GenAI tool call attributes (Braintrust value-add)
+        var genAiArgs = funcActivity.GetTagItem("gen_ai.tool.call.arguments")?.ToString();
+        Assert.NotNull(genAiArgs);
+        var genAiResult = funcActivity.GetTagItem("gen_ai.tool.call.result")?.ToString();
+        Assert.NotNull(genAiResult);
+        Assert.Contains("Sunny", genAiResult);
     }
 }
 

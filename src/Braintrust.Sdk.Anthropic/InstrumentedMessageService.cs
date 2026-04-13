@@ -166,12 +166,12 @@ internal sealed class InstrumentedMessageService : IMessageService
                 activity.SetTag("braintrust.metrics.time_to_first_token", timeToFirstToken.Value);
             }
 
-            activity.SetTag(
-                "braintrust.output_json",
-                ToJson(new object[]
-                {
-                    new { role = role ?? "assistant", content = output.ToString() }
-                }));
+            var outputJson = ToJson(new object[]
+            {
+                new { role = role ?? "assistant", content = output.ToString() }
+            });
+            activity.SetTag("braintrust.output_json", outputJson);
+            activity.SetTag("gen_ai.output.messages", outputJson);
         }
     }
 
@@ -203,6 +203,8 @@ internal sealed class InstrumentedMessageService : IMessageService
         double? timeToFirstToken = null)
     {
         activity.SetTag("provider", "anthropic");
+        activity.SetTag("gen_ai.operation.name", "chat");
+        activity.SetTag("gen_ai.provider.name", "anthropic");
         activity.SetTag("gen_ai.request.model", request.Model.Raw());
         activity.SetTag("gen_ai.response.model", response.Model.Raw());
 
@@ -221,14 +223,19 @@ internal sealed class InstrumentedMessageService : IMessageService
                 sys.TryPickString(out var sysContent);
                 inputMessages.Add(new { role = "system", content = sysContent });
             }
-            activity.SetTag("braintrust.input_json", ToJson(inputMessages));
+            var inputJson = ToJson(inputMessages);
+            activity.SetTag("braintrust.input_json", inputJson);
+            activity.SetTag("gen_ai.input.messages", inputJson);
 
             var contentJson = response.ToString();
             activity.SetTag("braintrust.output_json", contentJson);
+            activity.SetTag("gen_ai.output.messages", contentJson);
 
             // Extract token usage metrics
             activity.SetTag("braintrust.metrics.prompt_tokens", response.Usage.InputTokens);
+            activity.SetTag("gen_ai.usage.input_tokens", response.Usage.InputTokens);
             activity.SetTag("braintrust.metrics.completion_tokens", response.Usage.OutputTokens);
+            activity.SetTag("gen_ai.usage.output_tokens", response.Usage.OutputTokens);
             activity.SetTag("braintrust.metrics.tokens", response.Usage.InputTokens + response.Usage.OutputTokens);
 
             if (timeToFirstToken is > 0)
@@ -259,12 +266,15 @@ internal sealed class InstrumentedMessageService : IMessageService
     {
         activity.SetTag("stream", true);
         activity.SetTag("provider", "anthropic");
+        activity.SetTag("gen_ai.operation.name", "chat");
+        activity.SetTag("gen_ai.provider.name", "anthropic");
         activity.SetTag("gen_ai.request.model", request.Model.Raw());
 
         try
         {
             var messagesJson = ToJson(request.Messages);
             activity.SetTag("braintrust.input_json", messagesJson);
+            activity.SetTag("gen_ai.input.messages", messagesJson);
         }
         catch
         {
