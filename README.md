@@ -9,7 +9,7 @@ This library provides tools for **evaluating** and **tracing** AI applications i
 
 - **Evaluate** your AI models with custom test cases and scoring functions
 - **Trace** LLM calls and monitor AI application performance with OpenTelemetry
-- **Integrate** seamlessly with OpenAI, Anthropic, Microsoft Agent Framework, and other LLM providers
+- **Integrate** seamlessly with OpenAI, Anthropic, Microsoft Agent Framework, Microsoft.Extensions.AI (IChatClient), and other LLM providers
 
 This SDK is currently in BETA status and APIs may change.
 
@@ -35,20 +35,31 @@ dotnet add package Braintrust.Sdk.OpenAI
 dotnet add package Braintrust.Sdk.Anthropic
 ```
 
+### Microsoft.Extensions.AI integration (IChatClient)
+
+```bash
+dotnet add package Braintrust.Sdk.Extensions.AI
+```
+
+Works with any `IChatClient` provider: OpenAI, Azure OpenAI, Ollama, etc.
+
 ### Microsoft Agent Framework integration
 
 ```bash
 dotnet add package Braintrust.Sdk.AgentFramework
 ```
 
+For agent orchestration with `ChatClientAgent`. Includes IChatClient + agent-level tracing.
+
 ### Or add to your .csproj file
 
 ```xml
 <ItemGroup>
   <PackageReference Include="Braintrust.Sdk" Version="version goes here" />
-  <PackageReference Include="Braintrust.Sdk.OpenAI" Version="version goes here" />          <!-- optional -->
-  <PackageReference Include="Braintrust.Sdk.Anthropic" Version="version goes here" />        <!-- optional -->
-  <PackageReference Include="Braintrust.Sdk.AgentFramework" Version="version goes here" />   <!-- optional -->
+  <PackageReference Include="Braintrust.Sdk.Extensions.AI" Version="version goes here" />    <!-- IChatClient -->
+  <PackageReference Include="Braintrust.Sdk.OpenAI" Version="version goes here" />           <!-- raw OpenAI SDK -->
+  <PackageReference Include="Braintrust.Sdk.Anthropic" Version="version goes here" />        <!-- raw Anthropic SDK -->
+  <PackageReference Include="Braintrust.Sdk.AgentFramework" Version="version goes here" />   <!-- Agent Framework -->
 </ItemGroup>
 ```
 

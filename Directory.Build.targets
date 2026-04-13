@@ -94,7 +94,7 @@
   </PropertyGroup>
 
   <!-- Target to verify the version in the built assembly matches the expected git version -->
-  <Target Name="VerifyAssemblyVersion" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.OpenAI' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.Anthropic'">
+  <Target Name="VerifyAssemblyVersion" AfterTargets="Build" Condition="'$(SkipVersionVerification)' != 'true' and ('$(MSBuildProjectName)' == 'Braintrust.Sdk' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.OpenAI' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.Anthropic')">
     <Message Text="Verifying SDK version in built assembly..." Importance="high" />
 
     <!-- Get the expected version (recompute it to ensure consistency) -->
