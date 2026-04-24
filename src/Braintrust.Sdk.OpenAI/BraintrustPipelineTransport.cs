@@ -10,13 +10,25 @@ namespace Braintrust.Sdk.OpenAI;
 /// This transport wraps another transport (user-provided or default) and intercepts
 /// the request/response data at the PipelineMessage level.
 /// </summary>
-internal sealed class BraintrustPipelineTransport : PipelineTransport
+internal sealed class BraintrustPipelineTransport : PipelineTransport, IDisposable
 {
     private readonly PipelineTransport _innerTransport;
 
-    public BraintrustPipelineTransport(PipelineTransport innerTransport)
+    /// <summary>
+    /// HttpClient that we created internally (i.e. the caller did not provide their own transport).
+    /// Non-null only when we own the instance and are responsible for disposing it.
+    /// </summary>
+    private readonly HttpClient? _ownedHttpClient;
+
+    public BraintrustPipelineTransport(PipelineTransport innerTransport, HttpClient? ownedHttpClient = null)
     {
         _innerTransport = innerTransport ?? throw new ArgumentNullException(nameof(innerTransport));
+        _ownedHttpClient = ownedHttpClient;
+    }
+
+    public void Dispose()
+    {
+        _ownedHttpClient?.Dispose();
     }
 
     protected override PipelineMessage CreateMessageCore()

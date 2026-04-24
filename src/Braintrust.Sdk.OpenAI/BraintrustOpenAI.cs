@@ -35,8 +35,18 @@ public static class BraintrustOpenAI
             throw new ArgumentNullException(nameof(openAIApiKey));
 
         options ??= new OpenAIClientOptions();
-        var innerTransport = options.Transport ?? new HttpClientPipelineTransport(new HttpClient());
-        options.Transport = new BraintrustPipelineTransport(innerTransport);
+        HttpClient? ownedHttpClient = null;
+        PipelineTransport innerTransport;
+        if (options.Transport != null)
+        {
+            innerTransport = options.Transport;
+        }
+        else
+        {
+            ownedHttpClient = new HttpClient();
+            innerTransport = new HttpClientPipelineTransport(ownedHttpClient);
+        }
+        options.Transport = new BraintrustPipelineTransport(innerTransport, ownedHttpClient);
         var credential = new ApiKeyCredential(openAIApiKey);
         var openAIClient = new OpenAIClient(credential, options);
         return OpenAITelemetry.Builder(activitySource)
