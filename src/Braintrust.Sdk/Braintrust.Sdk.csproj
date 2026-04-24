@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -12,6 +12,7 @@
     <InternalsVisibleTo Include="Braintrust.Sdk.Tests" />
     <InternalsVisibleTo Include="Braintrust.Sdk.OpenAI.Tests" />
     <InternalsVisibleTo Include="Braintrust.Sdk.Anthropic.Tests" />
+    <InternalsVisibleTo Include="Braintrust.Sdk.AzureOpenAI.Tests" />
   </ItemGroup>
 
   <ItemGroup>
