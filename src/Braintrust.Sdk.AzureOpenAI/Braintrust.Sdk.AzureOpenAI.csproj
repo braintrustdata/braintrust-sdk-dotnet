@@ -9,8 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Braintrust.Sdk.OpenAI.Tests" />
-    <InternalsVisibleTo Include="Braintrust.Sdk.AzureOpenAI" />
     <InternalsVisibleTo Include="Braintrust.Sdk.AzureOpenAI.Tests" />
   </ItemGroup>
 
@@ -20,10 +18,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Braintrust.Sdk\Braintrust.Sdk.csproj" />
+    <ProjectReference Include="..\Braintrust.Sdk.OpenAI\Braintrust.Sdk.OpenAI.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="OpenAI" Version="2.9.1" />
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
   </ItemGroup>
 
 </Project>
