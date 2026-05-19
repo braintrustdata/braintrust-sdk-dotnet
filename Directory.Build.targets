@@ -74,8 +74,10 @@
 
     <Message Text="Generated Braintrust SDK version: $(BraintrustSdkVersion)" Importance="high" />
 
-    <!-- Set the Version property for NuGet packaging -->
-    <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.OpenAI' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.Anthropic'">
+    <!-- Set the Version property for NuGet packaging for all src/ projects.
+         Uses name-prefix detection so new Braintrust.Sdk.* projects are automatically included,
+         while test projects and temporary verifier projects in obj/ are excluded. -->
+    <PropertyGroup Condition="$(MSBuildProjectName.StartsWith('Braintrust.Sdk')) and '$(IsPackable)' != 'false'">
       <Version>$(BraintrustSdkVersion)</Version>
       <PackageVersion>$(BraintrustSdkVersion)</PackageVersion>
     </PropertyGroup>
@@ -93,8 +95,9 @@
     </CoreCompileDependsOn>
   </PropertyGroup>
 
-  <!-- Target to verify the version in the built assembly matches the expected git version -->
-  <Target Name="VerifyAssemblyVersion" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'Braintrust.Sdk' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.OpenAI' or '$(MSBuildProjectName)' == 'Braintrust.Sdk.Anthropic'">
+  <!-- Target to verify the version in the built assembly matches the expected git version.
+       Runs for all packable Braintrust.Sdk.* projects so new packages are automatically covered. -->
+  <Target Name="VerifyAssemblyVersion" AfterTargets="Build" Condition="$(MSBuildProjectName.StartsWith('Braintrust.Sdk')) and '$(IsPackable)' != 'false'">
     <Message Text="Verifying SDK version in built assembly..." Importance="high" />
 
     <!-- Get the expected version (recompute it to ensure consistency) -->
