@@ -185,6 +185,100 @@ public class BraintrustOpenAITest : IDisposable
     }
 
     [Fact]
+    public async Task ChatCompletion_FallbackPath_CapturesDataWithoutTransport()
+    {
+        // Arrange — create an OpenAIClient with a mock transport but WITHOUT
+        // BraintrustPipelineTransport. This simulates the WithBraintrust() extension
+        // method path where the transport is not injected.
+        SetupOpenTelemetry();
+        _exportedSpans.Clear();
+
+        var activitySource = BraintrustTracing.GetActivitySource();
+
+        var mockResponse = """
+            {
+              "id": "chatcmpl-fallback123",
+              "object": "chat.completion",
+              "created": 1234567890,
+              "model": "gpt-4o-mini-2024-07-18",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "Hello from the fallback path!"
+                  },
+                  "finish_reason": "stop"
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 15,
+                "completion_tokens": 7,
+                "total_tokens": 22
+              }
+            }
+            """;
+
+        // Create client directly with mock transport — no BraintrustPipelineTransport
+        var mockTransport = new MockPipelineTransport(mockResponse);
+        var options = new OpenAIClientOptions { Transport = mockTransport };
+        var rawClient = new OpenAIClient(new System.ClientModel.ApiKeyCredential("test-api-key"), options);
+
+        // Wrap via OpenAITelemetry (same path as WithBraintrust)
+        var telemetry = OpenAITelemetry.Builder(activitySource)
+            .SetCaptureMessageContent(true)
+            .Build();
+        var client = telemetry.Wrap(rawClient);
+
+        // Act
+        var chatClient = client.GetChatClient("gpt-4o-mini");
+        var messages = new ChatMessage[]
+        {
+            new SystemChatMessage("You are a helpful assistant"),
+            new UserChatMessage("Say hello")
+        };
+
+        var response = await chatClient.CompleteChatAsync(messages);
+
+        // Force span export
+        _tracerProvider?.ForceFlush();
+
+        // Assert — the span should contain data extracted from the typed API objects
+        Assert.NotNull(response);
+        Assert.Equal("Hello from the fallback path!", response.Value.Content[0].Text);
+
+        Assert.Single(_exportedSpans);
+        var span = _exportedSpans[0];
+        Assert.Equal("Chat Completion", span.DisplayName);
+
+        // Verify input was captured from the messages parameter (fallback path)
+        var inputJson = span.GetTagItem("braintrust.input_json") as string;
+        Assert.NotNull(inputJson);
+        Assert.Contains("system", inputJson);
+        Assert.Contains("You are a helpful assistant", inputJson);
+        Assert.Contains("user", inputJson);
+        Assert.Contains("Say hello", inputJson);
+
+        // Verify output was captured from the ChatCompletion object (fallback path)
+        var outputJson = span.GetTagItem("braintrust.output_json") as string;
+        Assert.NotNull(outputJson);
+        Assert.Contains("Hello from the fallback path!", outputJson);
+
+        // Verify response model was captured (fallback path uses ChatCompletion.Model)
+        var responseModel = span.GetTagItem("gen_ai.response.model") as string;
+        Assert.Equal("gpt-4o-mini-2024-07-18", responseModel);
+
+        // Verify token metrics were captured from ChatCompletion.Usage
+        Assert.Equal(15, Convert.ToInt32(span.GetTagItem("braintrust.metrics.prompt_tokens")));
+        Assert.Equal(7, Convert.ToInt32(span.GetTagItem("braintrust.metrics.completion_tokens")));
+        Assert.Equal(22, Convert.ToInt32(span.GetTagItem("braintrust.metrics.tokens")));
+
+        // Verify time_to_first_token
+        var ttft = Convert.ToDouble(span.GetTagItem("braintrust.metrics.time_to_first_token"));
+        Assert.True(ttft >= 0);
+    }
+
+    [Fact]
     public async Task ChatCompletion_CapturesErrorSpans()
     {
         // Arrange
