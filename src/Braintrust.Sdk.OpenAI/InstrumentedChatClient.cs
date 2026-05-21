@@ -60,7 +60,7 @@ internal sealed class InstrumentedChatClient : ChatClient
             // Tag the activity with telemetry data
             if (activity != null && _captureMessageContent)
             {
-                TagActivity(activity, timeToFirstToken, result.Value, messages);
+                TagActivity(activity, timeToFirstToken, result.Value, messages, options);
             }
 
             return result;
@@ -103,7 +103,7 @@ internal sealed class InstrumentedChatClient : ChatClient
             // Tag the activity with telemetry data
             if (activity != null && _captureMessageContent)
             {
-                TagActivity(activity, timeToFirstToken, result.Value, messages);
+                TagActivity(activity, timeToFirstToken, result.Value, messages, options);
             }
 
             return result;
@@ -138,7 +138,8 @@ internal sealed class InstrumentedChatClient : ChatClient
         Activity activity,
         double? timeToFirstToken,
         ChatCompletion? completion,
-        IEnumerable<ChatMessage>? messages)
+        IEnumerable<ChatMessage>? messages,
+        ChatCompletionOptions? options = null)
     {
         activity.SetTag("provider", "openai");
         activity.SetTag("braintrust.span_attributes", "{\"type\":\"llm\"}");
@@ -154,7 +155,7 @@ internal sealed class InstrumentedChatClient : ChatClient
         else
         {
             // Fallback path: no transport injected, extract from typed API objects
-            TagActivityFromApiObjects(activity, completion, messages, timeToFirstToken);
+            TagActivityFromApiObjects(activity, completion, messages, timeToFirstToken, options);
         }
     }
 
@@ -169,6 +170,19 @@ internal sealed class InstrumentedChatClient : ChatClient
             var requestJson = JsonNode.Parse(requestRaw);
             activity.SetTag("gen_ai.request.model", requestJson?["model"]?.ToString());
             activity.SetTag("braintrust.input_json", requestJson?["messages"]?.ToString());
+
+            // Build metadata from all request fields except messages (mirrors Python SDK behavior)
+            if (requestJson is JsonObject requestObj)
+            {
+                var meta = new Dictionary<string, JsonNode?> { ["provider"] = JsonValue.Create("openai") };
+                foreach (var (key, value) in requestObj)
+                {
+                    if (key != "messages")
+                        meta[key] = value?.DeepClone();
+                }
+                try { activity.SetTag("braintrust.metadata", JsonSerializer.Serialize(meta)); }
+                catch { }
+            }
         }
 
         if (responseRaw != null)
@@ -207,7 +221,8 @@ internal sealed class InstrumentedChatClient : ChatClient
         Activity activity,
         ChatCompletion? completion,
         IEnumerable<ChatMessage>? messages,
-        double? timeToFirstToken)
+        double? timeToFirstToken,
+        ChatCompletionOptions? options = null)
     {
         // Input: serialize the messages parameter
         if (messages != null)
@@ -250,6 +265,32 @@ internal sealed class InstrumentedChatClient : ChatClient
             }
 
             SetTimeToFirstToken(activity, timeToFirstToken);
+        }
+
+        // Build metadata from request options
+        try
+        {
+            var metadata = new Dictionary<string, object?> { ["provider"] = "openai" };
+            if (completion?.Model != null)
+                metadata["model"] = completion.Model;
+            if (options != null)
+            {
+                if (options.Temperature.HasValue) metadata["temperature"] = options.Temperature.Value;
+                if (options.MaxOutputTokenCount.HasValue) metadata["max_tokens"] = options.MaxOutputTokenCount.Value;
+                if (options.TopP.HasValue) metadata["top_p"] = options.TopP.Value;
+                if (options.FrequencyPenalty.HasValue) metadata["frequency_penalty"] = options.FrequencyPenalty.Value;
+                if (options.PresencePenalty.HasValue) metadata["presence_penalty"] = options.PresencePenalty.Value;
+                if (options.StopSequences?.Count > 0) metadata["stop"] = options.StopSequences;
+                if (!string.IsNullOrEmpty(options.EndUserId)) metadata["user"] = options.EndUserId;
+                if (options.Tools?.Count > 0) metadata["tools"] = options.Tools;
+                if (options.ToolChoice != null) metadata["tool_choice"] = options.ToolChoice;
+                if (options.ResponseFormat != null) metadata["response_format"] = options.ResponseFormat;
+            }
+            activity.SetTag("braintrust.metadata", JsonSerializer.Serialize(metadata, JsonOptions));
+        }
+        catch
+        {
+            // Ignore serialization errors
         }
     }
 

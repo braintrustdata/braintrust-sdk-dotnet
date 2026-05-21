@@ -183,6 +183,11 @@ public class BraintrustOpenAITest : IDisposable
         var ttft = Convert.ToDouble(timeToFirstToken);
         Assert.True(ttft >= 0, "time_to_first_token should be greater than or equal to 0");
 
+        // Verify metadata was captured with provider
+        var metadataJson = span.GetTagItem("braintrust.metadata") as string;
+        Assert.NotNull(metadataJson);
+        Assert.Contains("\"provider\":\"openai\"", metadataJson);
+
         // Verify span attributes type is set to "llm"
         var spanAttributes = span.GetTagItem("braintrust.span_attributes") as string;
         Assert.NotNull(spanAttributes);
@@ -281,6 +286,11 @@ public class BraintrustOpenAITest : IDisposable
         // Verify time_to_first_token
         var ttft = Convert.ToDouble(span.GetTagItem("braintrust.metrics.time_to_first_token"));
         Assert.True(ttft >= 0);
+
+        // Verify metadata was captured with provider
+        var metadataJson = span.GetTagItem("braintrust.metadata") as string;
+        Assert.NotNull(metadataJson);
+        Assert.Contains("\"provider\":\"openai\"", metadataJson);
     }
 
     [Fact]
