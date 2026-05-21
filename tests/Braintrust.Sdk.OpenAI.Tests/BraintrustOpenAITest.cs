@@ -182,6 +182,11 @@ public class BraintrustOpenAITest : IDisposable
         // Verify time_to_first_token is a non-negative number
         var ttft = Convert.ToDouble(timeToFirstToken);
         Assert.True(ttft >= 0, "time_to_first_token should be greater than or equal to 0");
+
+        // Verify span attributes type is set to "llm"
+        var spanAttributes = span.GetTagItem("braintrust.span_attributes") as string;
+        Assert.NotNull(spanAttributes);
+        Assert.Contains("\"type\":\"llm\"", spanAttributes);
     }
 
     [Fact]
