@@ -170,6 +170,12 @@ public class BraintrustAnthropicTest : IDisposable
 
         var ttft = Convert.ToDouble(timeToFirstToken);
         Assert.True(ttft >= 0, "time_to_first_token should be non-negative");
+
+        // Verify metadata was captured with provider and max_tokens
+        var metadataJson = span.GetTagItem("braintrust.metadata") as string;
+        Assert.NotNull(metadataJson);
+        Assert.Contains("\"provider\":\"anthropic\"", metadataJson);
+        Assert.Contains("\"max_tokens\":1024", metadataJson);
     }
 
     [Fact]

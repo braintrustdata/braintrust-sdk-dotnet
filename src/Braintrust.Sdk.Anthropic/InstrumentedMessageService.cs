@@ -240,6 +240,25 @@ internal sealed class InstrumentedMessageService : IMessageService
         {
             // Ignore errors
         }
+
+        // Build metadata from request params (mirrors Python SDK behavior)
+        try
+        {
+            var metadata = new Dictionary<string, object?> { ["provider"] = "anthropic" };
+            metadata["model"] = request.Model.Raw();
+            metadata["max_tokens"] = request.MaxTokens;
+            if (request.Temperature.HasValue) metadata["temperature"] = request.Temperature.Value;
+            if (request.TopP.HasValue) metadata["top_p"] = request.TopP.Value;
+            if (request.TopK.HasValue) metadata["top_k"] = request.TopK.Value;
+            if (request.StopSequences?.Count > 0) metadata["stop_sequences"] = request.StopSequences;
+            if (request.Tools?.Count > 0) metadata["tools"] = request.Tools;
+            if (request.ToolChoice is { } tc) metadata["tool_choice"] = tc;
+            activity.SetTag("braintrust.metadata", ToJson(metadata));
+        }
+        catch
+        {
+            // Ignore errors
+        }
     }
 
     private static string? ToJson<T>(T obj)
@@ -265,6 +284,25 @@ internal sealed class InstrumentedMessageService : IMessageService
         {
             var messagesJson = ToJson(request.Messages);
             activity.SetTag("braintrust.input_json", messagesJson);
+        }
+        catch
+        {
+            // Ignore errors
+        }
+
+        // Build metadata from request params
+        try
+        {
+            var metadata = new Dictionary<string, object?> { ["provider"] = "anthropic" };
+            metadata["model"] = request.Model.Raw();
+            metadata["max_tokens"] = request.MaxTokens;
+            if (request.Temperature.HasValue) metadata["temperature"] = request.Temperature.Value;
+            if (request.TopP.HasValue) metadata["top_p"] = request.TopP.Value;
+            if (request.TopK.HasValue) metadata["top_k"] = request.TopK.Value;
+            if (request.StopSequences?.Count > 0) metadata["stop_sequences"] = request.StopSequences;
+            if (request.Tools?.Count > 0) metadata["tools"] = request.Tools;
+            if (request.ToolChoice is { } tc) metadata["tool_choice"] = tc;
+            activity.SetTag("braintrust.metadata", ToJson(metadata));
         }
         catch
         {
