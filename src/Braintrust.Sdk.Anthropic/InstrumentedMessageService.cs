@@ -203,6 +203,7 @@ internal sealed class InstrumentedMessageService : IMessageService
         double? timeToFirstToken = null)
     {
         activity.SetTag("provider", "anthropic");
+        activity.SetTag("braintrust.span_attributes", "{\"type\":\"llm\"}");
         activity.SetTag("gen_ai.request.model", request.Model.Raw());
         activity.SetTag("gen_ai.response.model", response.Model.Raw());
 
@@ -278,6 +279,7 @@ internal sealed class InstrumentedMessageService : IMessageService
     {
         activity.SetTag("stream", true);
         activity.SetTag("provider", "anthropic");
+        activity.SetTag("braintrust.span_attributes", "{\"type\":\"llm\"}");
         activity.SetTag("gen_ai.request.model", request.Model.Raw());
 
         try

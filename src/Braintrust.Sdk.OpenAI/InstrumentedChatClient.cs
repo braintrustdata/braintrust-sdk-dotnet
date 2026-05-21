@@ -142,6 +142,7 @@ internal sealed class InstrumentedChatClient : ChatClient
         ChatCompletionOptions? options = null)
     {
         activity.SetTag("provider", "openai");
+        activity.SetTag("braintrust.span_attributes", "{\"type\":\"llm\"}");
 
         var requestRaw = activity.GetBaggageItem("braintrust.http.request");
         var responseRaw = activity.GetBaggageItem("braintrust.http.response");
