@@ -141,6 +141,7 @@ internal sealed class InstrumentedChatClient : ChatClient
         IEnumerable<ChatMessage>? messages)
     {
         activity.SetTag("provider", "openai");
+        activity.SetTag("braintrust.span_attributes", "{\"type\":\"llm\"}");
 
         var requestRaw = activity.GetBaggageItem("braintrust.http.request");
         var responseRaw = activity.GetBaggageItem("braintrust.http.response");
