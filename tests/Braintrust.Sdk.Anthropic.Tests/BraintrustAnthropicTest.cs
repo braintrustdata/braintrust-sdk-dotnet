@@ -176,7 +176,7 @@ public class BraintrustAnthropicTest : IDisposable
         Assert.NotNull(metadataJson);
         Assert.Contains("\"provider\":\"anthropic\"", metadataJson);
         Assert.Contains("\"max_tokens\":1024", metadataJson);
-        
+
         // Verify span attributes type is set to "llm"
         var spanAttributes = span.GetTagItem("braintrust.span_attributes") as string;
         Assert.NotNull(spanAttributes);
