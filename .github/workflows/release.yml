@@ -1,99 +1,174 @@
-# This workflow is triggered when a new tag is pushed to main.
-# It can also be run manually to re-publish a release in case it failed for some reason.
-name: Publish Release From Tag
+# Drives a release end-to-end from GitHub Actions in a single workflow.
+#
+# Click "Run workflow", enter a version like v1.2.3 and the full 40-char
+# commit SHA to release, and this will:
+#   1. Validate the version (semver) and the SHA.
+#   2. Verify the SHA is reachable from origin/main.
+#   3. Run the full CI gate (format, build, test) on the pinned SHA.
+#   4. Create and push the annotated tag vX.Y.Z pointing at the SHA
+#      (using GITHUB_TOKEN).
+#   5. Check out the tag and re-run the CI gate at the tag.
+#   6. Pack all NuGet packages with the released version.
+#   7. Create the GitHub Release and upload the .nupkg / .snupkg files.
+#   8. Publish to NuGet.org via OIDC trusted publishing.
+#
+# The releaser must supply an explicit commit SHA (not a branch name) so
+# that commits which land on main during the environment approval gate
+# are NOT silently included in the release.
+#
+# Re-publishing a failed release: re-run this workflow with the same
+# version (and any valid SHA on main -- it is ignored once the tag
+# exists). The tag-creation step is skipped, GitHub Release asset
+# uploads use --clobber, and dotnet nuget push uses --skip-duplicate, so
+# the workflow is safe to re-run.
+#
+# Environment gating:
+#
+#   - Stable releases (e.g. v1.2.3) run in the protected `release`
+#     GitHub Environment, which requires reviewer approval before any
+#     tag is pushed or any artifact is published.
+#   - Prereleases (any version containing `-`, e.g. v1.2.3-beta.1) run
+#     in the `release-prerelease` Environment, which holds the same
+#     publish secrets but does NOT require reviewer approval. This
+#     keeps iteration on prereleases fast.
+#
+# Both environments must be configured in repo settings (Settings ->
+# Environments) with the NuGet publish secrets (NUGET_USER). Only the
+# `release` environment should have required reviewers.
+name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Tag to publish (e.g., v1.0.0)'
+      version:
+        description: 'Version to release (e.g., v1.2.3)'
+        required: true
+        type: string
+      sha:
+        description: 'Full 40-char commit SHA to tag. Required so the releaser controls exactly what ships, even if main advances during the approval gate. Ignored if the tag already exists.'
         required: true
         type: string
 
 permissions:
   contents: write
-  id-token: write  # Required for OIDC trusted publishing
+  id-token: write  # Required for NuGet OIDC trusted publishing
 
 jobs:
-  validate-and-publish:
-    name: Validate Tag and Publish Release
+  release:
+    name: Release
     # we want to run ubuntu-latest but we'll pin to a specific version so workflow is reproducable
     runs-on: ubuntu-24.04
+    # Gate stable releases behind the protected `release` GitHub
+    # Environment (required reviewers). Prereleases -- any semver with
+    # a `-` suffix, e.g. v1.2.3-beta.1 -- run in `release-prerelease`,
+    # which holds the same publish secrets but has no approval gate so
+    # iteration on prereleases stays fast.
+    #
+    # The validation step below enforces the semver shape
+    # vX.Y.Z(-prerelease)?, so this `contains` check is safe: stable
+    # versions never contain `-`, prereleases always do.
+    environment: ${{ contains(inputs.version, '-') && 'release-prerelease' || 'release' }}
     steps:
-      - name: Checkout code
+      - name: Validate inputs
+        run: |
+          V="${{ inputs.version }}"
+          if [[ ! "$V" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "Error: version must be semver (e.g. v1.2.3 or v1.2.3-beta.1)" >&2
+            exit 1
+          fi
+          SHA="${{ inputs.sha }}"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Error: sha must be a full 40-character lowercase commit SHA. Got: '$SHA'" >&2
+            echo "Tip: copy the SHA from the commit page on GitHub (use the 'Copy full SHA' button)." >&2
+            exit 1
+          fi
+
+      - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          ref: ${{ inputs.sha }}
           fetch-depth: 0
 
-      - name: Determine tag
-        id: determine-tag
+      - name: Verify SHA is reachable from main
         run: |
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            TAG_NAME="${{ github.ref_name }}"
+          SHA="${{ inputs.sha }}"
+          git fetch origin main --quiet
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "Error: commit $SHA is not an ancestor of origin/main." >&2
+            echo "Releases must be cut from commits that have landed on main." >&2
+            exit 1
+          fi
+          echo "Commit $SHA is reachable from origin/main."
+
+      - name: Determine whether tag already exists
+        id: tag-state
+        run: |
+          TAG="${{ inputs.version }}"
+          git fetch --tags --quiet
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag '$TAG' already exists; will publish from the existing tag."
+          elif git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag '$TAG' exists on origin but not locally; fetching."
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
           else
-            TAG_NAME="${{ inputs.tag }}"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag '$TAG' does not exist yet; will create at $SHA."
           fi
-          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Using tag: $TAG_NAME"
-
-      - name: Validate tag format
-        run: |
-          TAG="${{ steps.determine-tag.outputs.tag }}"
-
-          # Check if tag starts with 'v'
-          if [[ ! "$TAG" =~ ^v ]]; then
-            echo "Error: Tag '$TAG' must start with 'v'"
-            exit 1
-          fi
-
-          # Extract version without 'v' prefix
-          VERSION="${TAG#v}"
-
-          # Check if version is valid semver (x.y.z or x.y.z-prerelease)
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
-            echo "Error: Tag '$TAG' is not valid semver format (vx.y.z or vx.y.z-prerelease)"
-            exit 1
-          fi
-
-          echo "Tag '$TAG' is valid"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-        id: validate-tag
-
-      - name: Verify tag exists
-        run: |
-          TAG="${{ steps.determine-tag.outputs.tag }}"
-          if ! git tag -l | grep -q "^$TAG$"; then
-            echo "Error: Tag '$TAG' does not exist"
-            exit 1
-          fi
-          echo "Tag '$TAG' exists"
-
-      - name: Checkout tag
-        run: |
-          git checkout ${{ steps.determine-tag.outputs.tag }}
 
       - name: Set up .NET 8.0
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore dependencies
+      - name: Restore dependencies (pre-tag, on chosen ref)
+        if: steps.tag-state.outputs.exists == 'false'
         run: dotnet restore
 
-      - name: Check code formatting
+      - name: Check code formatting (pre-tag, on chosen ref)
+        if: steps.tag-state.outputs.exists == 'false'
         run: dotnet format --verify-no-changes
 
-      - name: Run CI (build and test)
+      - name: Run CI (pre-tag, on chosen ref)
+        if: steps.tag-state.outputs.exists == 'false'
+        run: |
+          dotnet build --no-restore --configuration Release
+          dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: Configure git identity
+        if: steps.tag-state.outputs.exists == 'false'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        if: steps.tag-state.outputs.exists == 'false'
+        run: |
+          TAG="${{ inputs.version }}"
+          SHA="${{ inputs.sha }}"
+          git tag -a "$TAG" -m "Release $TAG" "$SHA"
+          git push origin "$TAG"
+
+      - name: Checkout tag
+        run: git checkout "${{ inputs.version }}"
+
+      - name: Restore dependencies (at tag)
+        run: dotnet restore
+
+      - name: Check code formatting (at tag)
+        run: dotnet format --verify-no-changes
+
+      - name: Run CI (at tag)
         run: |
           dotnet build --no-restore --configuration Release
           dotnet test --no-build --configuration Release --verbosity normal
 
       - name: Pack NuGet packages
         run: |
-          VERSION="${{ steps.validate-tag.outputs.version }}"
+          TAG="${{ inputs.version }}"
+          # Strip 'v' prefix to get the actual package version
+          VERSION="${TAG#v}"
           dotnet pack src/Braintrust.Sdk/Braintrust.Sdk.csproj \
             --configuration Release \
             --no-build \
@@ -128,7 +203,8 @@ jobs:
       - name: Find built artifacts
         id: find-artifacts
         run: |
-          VERSION="${{ steps.validate-tag.outputs.version }}"
+          TAG="${{ inputs.version }}"
+          VERSION="${TAG#v}"
 
           # Find the built NuGet packages
           NUPKG=$(find ./artifacts -name "Braintrust.Sdk.${VERSION}.nupkg" | head -1)
@@ -185,16 +261,22 @@ jobs:
             echo "  AzureOpenAI symbols package: $AZUREOPENAI_SNUPKG"
           fi
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ steps.determine-tag.outputs.tag }}"
+          TAG="${{ inputs.version }}"
 
-          # Create the release
-          gh release create "$TAG" \
-            --generate-notes \
-            --title "Release $TAG"
+          # Create the release if it doesn't already exist (re-publish path).
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --generate-notes \
+              --title "Release $TAG"
+          else
+            echo "Release '$TAG' already exists; will upload (clobber) assets."
+          fi
 
-          # Upload artifacts if they exist
+          # Upload artifacts if they exist, clobbering any partial uploads from a prior run.
           for artifact in \
             "${{ steps.find-artifacts.outputs.nupkg }}" \
             "${{ steps.find-artifacts.outputs.snupkg }}" \
@@ -207,11 +289,9 @@ jobs:
             "${{ steps.find-artifacts.outputs.azureopenai_nupkg }}" \
             "${{ steps.find-artifacts.outputs.azureopenai_snupkg }}"; do
             if [[ -n "$artifact" && -f "$artifact" ]]; then
-              gh release upload "$TAG" "$artifact"
+              gh release upload "$TAG" "$artifact" --clobber
             fi
           done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: NuGet login (OIDC trusted publishing)
         uses: NuGet/login@d22cc5f58ff5b88bf9bd452535b4335137e24544 # v1.1.0
@@ -241,7 +321,8 @@ jobs:
 
       - name: Wait for NuGet.org indexing
         run: |
-          VERSION="${{ steps.validate-tag.outputs.version }}"
+          TAG="${{ inputs.version }}"
+          VERSION="${TAG#v}"
           echo "Packages published! It may take a few minutes to appear on NuGet.org"
           echo "Check status at:"
           echo "  https://www.nuget.org/packages/Braintrust.Sdk/$VERSION"
