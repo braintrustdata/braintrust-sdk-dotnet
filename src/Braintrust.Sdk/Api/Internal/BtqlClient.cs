@@ -96,8 +96,9 @@ internal class BtqlClient : IBtqlClient
 
     private async Task<BtqlResponse> PostBtqlAsync(string query, CancellationToken cancellationToken)
     {
+        var apiKey = await _config.GetRequiredApiKeyAsync(cancellationToken).ConfigureAwait(false);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/btql");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.ApiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Content = JsonContent.Create(new BtqlRequest(query), options: _jsonOptions);
 
