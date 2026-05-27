@@ -62,14 +62,6 @@ Install the dotnet 8 framework
 - Linux: Follow [these instructions](https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-install?tabs=dotnet10&pivots=os-linux-ubuntu-2404)
 - Windows: Follow [these instructions](https://learn.microsoft.com/en-us/dotnet/core/install/windows)
 
-Set `BRAINTRUST_API_KEY` in your environment, or place it in the nearest `.env.braintrust` file:
-
-```dotenv
-BRAINTRUST_API_KEY=your-api-key
-```
-
-The SDK only reads `BRAINTRUST_API_KEY` from `.env.braintrust`; it does not load other dotenv variables.
-
 ### List All Examples
 
 ```bash
