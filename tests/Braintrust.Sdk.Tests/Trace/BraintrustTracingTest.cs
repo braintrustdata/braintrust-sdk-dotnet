@@ -27,4 +27,42 @@ public class BraintrustTracingTest
         Assert.NotNull(activitySource);
         Assert.Equal("braintrust-dotnet", activitySource.Name);
     }
+
+    [Fact]
+    public void CreateTracerProvider_DoesNotRequireApiKeyDuringSetup()
+    {
+        var originalApiKey = Environment.GetEnvironmentVariable("BRAINTRUST_API_KEY");
+        Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", null);
+
+        try
+        {
+            var config = BraintrustConfig.FromEnvironment();
+            using var tracerProvider = BraintrustTracing.CreateTracerProvider(config);
+
+            Assert.NotNull(tracerProvider);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", originalApiKey);
+        }
+    }
+
+    [Fact]
+    public void ForceFlushBeforeExport_DoesNotRequireApiKey()
+    {
+        var originalApiKey = Environment.GetEnvironmentVariable("BRAINTRUST_API_KEY");
+        Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", null);
+
+        try
+        {
+            var config = BraintrustConfig.FromEnvironment();
+            using var tracerProvider = BraintrustTracing.CreateTracerProvider(config);
+
+            Assert.True(BraintrustTracing.ForceFlush());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", originalApiKey);
+        }
+    }
 }

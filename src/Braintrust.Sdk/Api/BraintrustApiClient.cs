@@ -154,15 +154,17 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
 
     private async Task<LoginResponse> Login()
     {
-        var request = new LoginRequest(_config.ApiKey);
-        return await PostAsync<LoginRequest, LoginResponse>("/api/apikey/login", request)
+        var apiKey = await _config.GetRequiredApiKeyAsync().ConfigureAwait(false);
+        var request = new LoginRequest(apiKey);
+        return await PostAsync<LoginRequest, LoginResponse>("/api/apikey/login", request, apiKey: apiKey)
             .ConfigureAwait(false);
     }
 
     private async Task<TResponse> GetAsync<TResponse>(string path, CancellationToken cancellationToken = default)
     {
+        var apiKey = await _config.GetRequiredApiKeyAsync(cancellationToken).ConfigureAwait(false);
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.ApiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -172,10 +174,12 @@ public class BraintrustApiClient : IBraintrustApiClient, IDisposable
     private async Task<TResponse> PostAsync<TRequest, TResponse>(
         string path,
         TRequest body,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? apiKey = null)
     {
+        apiKey ??= await _config.GetRequiredApiKeyAsync(cancellationToken).ConfigureAwait(false);
         using var request = new HttpRequestMessage(HttpMethod.Post, path);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.ApiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Content = JsonContent.Create(body, options: _jsonOptions);
 

@@ -82,8 +82,14 @@ public static class BraintrustTracing
             {
                 otlpOptions.Protocol = OtlpExportProtocol.HttpProtobuf;
                 otlpOptions.Endpoint = new Uri($"{config.ApiUrl}{config.TracesPath}");
-                otlpOptions.Headers = BuildHeaders(config);
                 otlpOptions.TimeoutMilliseconds = (int)config.RequestTimeout.TotalMilliseconds;
+                otlpOptions.HttpClientFactory = () => new HttpClient(new BraintrustOtlpAuthHandler(config)
+                {
+                    InnerHandler = new HttpClientHandler()
+                })
+                {
+                    Timeout = config.RequestTimeout
+                };
             })
             .SetSampler(new AlwaysOnSampler());
     }
@@ -104,20 +110,4 @@ public static class BraintrustTracing
         return _activitySource.Value;
     }
 
-    private static string BuildHeaders(BraintrustConfig config)
-    {
-        var headers = new List<string>
-        {
-            $"Authorization=Bearer {config.ApiKey}"
-        };
-
-        // Add parent header if available
-        var parentValue = config.GetBraintrustParentValue();
-        if (parentValue != null)
-        {
-            headers.Add($"x-bt-parent={parentValue}");
-        }
-
-        return string.Join(",", headers);
-    }
 }

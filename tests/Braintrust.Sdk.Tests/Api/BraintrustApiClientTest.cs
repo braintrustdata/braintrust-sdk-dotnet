@@ -6,6 +6,7 @@ using Braintrust.Sdk.Config;
 
 namespace Braintrust.Sdk.Tests.Api;
 
+[Collection("BraintrustGlobals")]
 public class BraintrustApiClientTest : IDisposable
 {
     private readonly TestHttpMessageHandler _handler;
@@ -126,6 +127,44 @@ public class BraintrustApiClientTest : IDisposable
 
         Assert.Equal(400, exception.StatusCode);
         Assert.Contains("400", exception.Message);
+    }
+
+    [Fact]
+    public async Task UsesApiKeyFromBraintrustEnvFile()
+    {
+        var originalCwd = Directory.GetCurrentDirectory();
+        var originalApiKey = Environment.GetEnvironmentVariable("BRAINTRUST_API_KEY");
+        var tempDir = Directory.CreateTempSubdirectory("braintrust-api-client-env-").FullName;
+
+        try
+        {
+            Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", null);
+            File.WriteAllText(Path.Combine(tempDir, ".env.braintrust"), "BRAINTRUST_API_KEY=file-api-key\n");
+            Directory.SetCurrentDirectory(tempDir);
+
+            using var handler = new TestHttpMessageHandler();
+            using var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri("https://test-api.example.com")
+            };
+
+            var config = BraintrustConfig.Of(
+                ("BRAINTRUST_API_URL", "https://test-api.example.com"),
+                ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+            );
+            using var apiClient = new BraintrustApiClient(config, httpClient);
+            handler.SetResponse(HttpStatusCode.OK, new Project("proj-123", "test-project", "org-456"));
+
+            await apiClient.GetOrCreateProject("test-project");
+
+            Assert.Equal("Bearer file-api-key", handler.LastRequest?.Headers.Authorization?.ToString());
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalCwd);
+            Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", originalApiKey);
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     // Test HttpMessageHandler for mocking HTTP responses

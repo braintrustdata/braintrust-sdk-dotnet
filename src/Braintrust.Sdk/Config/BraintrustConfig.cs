@@ -9,7 +9,13 @@ namespace Braintrust.Sdk.Config;
 /// </summary>
 public sealed class BraintrustConfig : BaseConfig
 {
-    public string ApiKey { get; }
+    private const string ApiKeySettingName = "BRAINTRUST_API_KEY";
+
+    private readonly bool _hasApiKeyOverride;
+    private readonly string? _apiKeyOverride;
+    private readonly string? _braintrustEnvSearchRoot;
+
+    public string ApiKey => GetRequiredApiKeyAsync().GetAwaiter().GetResult();
     public string ApiUrl { get; }
     public string AppUrl { get; }
     public string TracesPath { get; }
@@ -39,7 +45,21 @@ public sealed class BraintrustConfig : BaseConfig
 
     private BraintrustConfig(IDictionary<string, string?> envOverrides) : base(envOverrides)
     {
-        ApiKey = GetRequiredConfig("BRAINTRUST_API_KEY");
+        try
+        {
+            _braintrustEnvSearchRoot = Directory.GetCurrentDirectory();
+        }
+        catch
+        {
+            _braintrustEnvSearchRoot = null;
+        }
+
+        if (envOverrides.TryGetValue(ApiKeySettingName, out var apiKeyOverride))
+        {
+            _hasApiKeyOverride = true;
+            _apiKeyOverride = apiKeyOverride == NullOverride ? null : apiKeyOverride;
+        }
+
         ApiUrl = GetConfig("BRAINTRUST_API_URL", "https://api.braintrust.dev");
         AppUrl = GetConfig("BRAINTRUST_APP_URL", "https://www.braintrust.dev");
         TracesPath = GetConfig("BRAINTRUST_TRACES_PATH", "/otel/v1/traces");
@@ -55,6 +75,53 @@ public sealed class BraintrustConfig : BaseConfig
             // should never happen
             throw new InvalidOperationException("A project name or ID is required.");
         }
+    }
+
+    internal string? TryGetImmediateApiKey()
+    {
+        if (_hasApiKeyOverride)
+        {
+            return string.IsNullOrWhiteSpace(_apiKeyOverride) ? null : _apiKeyOverride;
+        }
+
+        var value = Environment.GetEnvironmentVariable(ApiKeySettingName);
+        if (value == NullOverride)
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    internal async Task<string> GetRequiredApiKeyAsync(CancellationToken cancellationToken = default)
+    {
+        var immediateApiKey = TryGetImmediateApiKey();
+        if (immediateApiKey != null)
+        {
+            return immediateApiKey;
+        }
+
+        if (_hasApiKeyOverride || Environment.GetEnvironmentVariable(ApiKeySettingName) == NullOverride)
+        {
+            throw MissingApiKeyException();
+        }
+
+        var apiKey = await BraintrustApiKeyDiscovery.FindInBraintrustEnvFileAsync(
+                _braintrustEnvSearchRoot,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            return apiKey;
+        }
+
+        throw MissingApiKeyException();
+    }
+
+    private static InvalidOperationException MissingApiKeyException()
+    {
+        return new InvalidOperationException(
+            "BRAINTRUST_API_KEY is required. Set BRAINTRUST_API_KEY, define it in .env.braintrust, or provide an API key.");
     }
 
     /// <summary>

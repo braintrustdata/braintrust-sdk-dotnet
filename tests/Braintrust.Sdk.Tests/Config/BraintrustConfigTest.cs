@@ -2,6 +2,7 @@ using Braintrust.Sdk.Config;
 
 namespace Braintrust.Sdk.Tests.Config;
 
+[Collection("BraintrustGlobals")]
 public class BraintrustConfigTest
 {
     [Fact]
@@ -31,9 +32,8 @@ public class BraintrustConfigTest
     [Fact]
     public void RequiresApiKey()
     {
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            BraintrustConfig.Of(
-                ("BRAINTRUST_API_KEY", BaseConfig.NullOverride)));
+        var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", BaseConfig.NullOverride));
+        var exception = Assert.Throws<InvalidOperationException>(() => _ = config.ApiKey);
 
         Assert.Contains("BRAINTRUST_API_KEY is required", exception.Message);
     }
