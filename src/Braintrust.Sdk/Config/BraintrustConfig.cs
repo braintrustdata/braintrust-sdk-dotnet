@@ -13,6 +13,7 @@ public sealed class BraintrustConfig : BaseConfig
 
     private readonly bool _hasApiKeyOverride;
     private readonly string? _apiKeyOverride;
+    private readonly string? _braintrustEnvSearchRoot;
 
     public string ApiKey => GetRequiredApiKeyAsync().GetAwaiter().GetResult();
     public string ApiUrl { get; }
@@ -44,6 +45,15 @@ public sealed class BraintrustConfig : BaseConfig
 
     private BraintrustConfig(IDictionary<string, string?> envOverrides) : base(envOverrides)
     {
+        try
+        {
+            _braintrustEnvSearchRoot = Directory.GetCurrentDirectory();
+        }
+        catch
+        {
+            _braintrustEnvSearchRoot = null;
+        }
+
         if (envOverrides.TryGetValue(ApiKeySettingName, out var apiKeyOverride))
         {
             _hasApiKeyOverride = true;
@@ -96,7 +106,9 @@ public sealed class BraintrustConfig : BaseConfig
             throw MissingApiKeyException();
         }
 
-        var apiKey = await BraintrustApiKeyDiscovery.FindInBraintrustEnvFileAsync(cancellationToken)
+        var apiKey = await BraintrustApiKeyDiscovery.FindInBraintrustEnvFileAsync(
+                _braintrustEnvSearchRoot,
+                cancellationToken)
             .ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(apiKey))
         {

@@ -46,4 +46,23 @@ public class BraintrustTracingTest
             Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", originalApiKey);
         }
     }
+
+    [Fact]
+    public void ForceFlushBeforeExport_DoesNotRequireApiKey()
+    {
+        var originalApiKey = Environment.GetEnvironmentVariable("BRAINTRUST_API_KEY");
+        Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", null);
+
+        try
+        {
+            var config = BraintrustConfig.FromEnvironment();
+            using var tracerProvider = BraintrustTracing.CreateTracerProvider(config);
+
+            Assert.True(BraintrustTracing.ForceFlush());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BRAINTRUST_API_KEY", originalApiKey);
+        }
+    }
 }

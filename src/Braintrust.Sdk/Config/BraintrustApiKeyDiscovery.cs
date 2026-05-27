@@ -6,20 +6,17 @@ internal static class BraintrustApiKeyDiscovery
     private const string BraintrustEnvFileName = ".env.braintrust";
     private const string BraintrustApiKeyName = "BRAINTRUST_API_KEY";
 
-    internal static async Task<string?> FindInBraintrustEnvFileAsync(CancellationToken cancellationToken = default)
+    internal static async Task<string?> FindInBraintrustEnvFileAsync(
+        string? searchRoot,
+        CancellationToken cancellationToken = default)
     {
-        string currentDirectory;
-        try
-        {
-            currentDirectory = Directory.GetCurrentDirectory();
-        }
-        catch
+        if (string.IsNullOrEmpty(searchRoot))
         {
             return null;
         }
 
         var paths = new List<string>();
-        for (var dir = currentDirectory; paths.Count <= BraintrustEnvSearchParentLimit; dir = Path.GetDirectoryName(dir)!)
+        for (var dir = searchRoot; paths.Count <= BraintrustEnvSearchParentLimit; dir = Path.GetDirectoryName(dir)!)
         {
             paths.Add(Path.Combine(dir, BraintrustEnvFileName));
 
@@ -32,11 +29,10 @@ internal static class BraintrustApiKeyDiscovery
 
         // Start the reads together, then await nearest-first so a parent file never beats a closer file.
         var reads = paths
-            .Select((path, index) => File.ReadAllTextAsync(path, cancellationToken)
+            .Select(path => File.ReadAllTextAsync(path, cancellationToken)
                 .ContinueWith(
                     task => new
                     {
-                        Index = index,
                         Contents = task.IsCompletedSuccessfully ? task.Result : null,
                         Error = task.IsCompletedSuccessfully
                             ? null

@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Braintrust.Sdk.Config;
 using Microsoft.Extensions.Logging;
-using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -79,12 +78,19 @@ public static class BraintrustTracing
                 .AddService(serviceName: OtelServiceName, serviceVersion: InstrumentationVersion))
             .AddSource(InstrumentationName)
             .AddProcessor(spanProcessor)
-            .AddProcessor(new BatchActivityExportProcessor(
-                new LazyBraintrustOtlpTraceExporter(config),
-                maxQueueSize: 2048,
-                scheduledDelayMilliseconds: 5000,
-                exporterTimeoutMilliseconds: 30000,
-                maxExportBatchSize: 512))
+            .AddOtlpExporter(otlpOptions =>
+            {
+                otlpOptions.Protocol = OtlpExportProtocol.HttpProtobuf;
+                otlpOptions.Endpoint = new Uri($"{config.ApiUrl}{config.TracesPath}");
+                otlpOptions.TimeoutMilliseconds = (int)config.RequestTimeout.TotalMilliseconds;
+                otlpOptions.HttpClientFactory = () => new HttpClient(new BraintrustOtlpAuthHandler(config)
+                {
+                    InnerHandler = new HttpClientHandler()
+                })
+                {
+                    Timeout = config.RequestTimeout
+                };
+            })
             .SetSampler(new AlwaysOnSampler());
     }
 
@@ -104,20 +110,4 @@ public static class BraintrustTracing
         return _activitySource.Value;
     }
 
-    internal static string BuildHeaders(BraintrustConfig config, string apiKey)
-    {
-        var headers = new List<string>
-        {
-            $"Authorization=Bearer {apiKey}"
-        };
-
-        // Add parent header if available
-        var parentValue = config.GetBraintrustParentValue();
-        if (parentValue != null)
-        {
-            headers.Add($"x-bt-parent={parentValue}");
-        }
-
-        return string.Join(",", headers);
-    }
 }

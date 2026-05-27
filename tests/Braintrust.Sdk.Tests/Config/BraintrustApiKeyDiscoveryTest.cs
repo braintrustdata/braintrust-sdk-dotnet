@@ -192,6 +192,21 @@ public class BraintrustApiKeyDiscoveryTest : IDisposable
         Assert.Equal("late-file-key", await config.GetRequiredApiKeyAsync());
     }
 
+    [Fact]
+    public async Task UsesBraintrustEnvSearchRootFromConfigCreation()
+    {
+        var lookupDir = Path.Combine(_tempDir, "lookup");
+        Directory.CreateDirectory(lookupDir);
+        WriteBraintrustEnv(_tempDir, "BRAINTRUST_API_KEY=creation-key\n");
+        WriteBraintrustEnv(lookupDir, "BRAINTRUST_API_KEY=lookup-key\n");
+        Directory.SetCurrentDirectory(_tempDir);
+
+        var config = BraintrustConfig.FromEnvironment();
+        Directory.SetCurrentDirectory(lookupDir);
+
+        Assert.Equal("creation-key", await config.GetRequiredApiKeyAsync());
+    }
+
     private static void WriteBraintrustEnv(string dir, string contents)
     {
         File.WriteAllText(Path.Combine(dir, ".env.braintrust"), contents);
