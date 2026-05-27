@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RELEASE_WORKFLOW="$REPO_ROOT/.github/workflows/publish-release-from-tag.yml"
+RELEASE_WORKFLOW="$REPO_ROOT/.github/workflows/release.yml"
 SOLUTION_FILE="$REPO_ROOT/Braintrust.Sdk.sln"
 
 errors=0
@@ -81,7 +81,7 @@ echo ""
 if [[ $errors -gt 0 ]]; then
   echo "FAILED: Found $errors error(s). New src/ projects must be added to:"
   echo "  1. The solution file (Braintrust.Sdk.sln)"
-  echo "  2. The release workflow (.github/workflows/publish-release-from-tag.yml):"
+  echo "  2. The release workflow (.github/workflows/release.yml):"
   echo "     - 'Pack NuGet packages' step (dotnet pack)"
   echo "     - 'Find built artifacts' step"
   echo "     - 'Create GitHub Release' step (upload)"

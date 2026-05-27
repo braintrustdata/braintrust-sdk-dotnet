@@ -1,4 +1,23 @@
 #!/usr/bin/env bash
+#
+# Local fallback for cutting a release tag.
+#
+# The CANONICAL release path is the gated GitHub Actions workflow:
+#   Actions -> Release -> Run workflow
+# That workflow runs in the protected `release` environment, which
+# requires reviewer approval and holds the NuGet publish secrets. See
+# CONTRIBUTING.md ("Releasing") for the end-to-end flow.
+#
+# This script is kept as a local fallback for testing tag creation
+# (e.g. with --skip-push) and for emergencies where the Actions UI is
+# not usable. It does NOT publish to NuGet.org and does NOT create a
+# GitHub Release; it only validates, runs `dotnet test`, and pushes a
+# vX.Y.Z tag.
+#
+# Note that with the new gated release workflow the `push: tags: v*`
+# trigger has been REMOVED. Pushing a tag with this script will no
+# longer publish anything on its own -- a release manager still has to
+# run the `Release` workflow from the Actions UI to ship the artifacts.
 
 set -euo pipefail
 
