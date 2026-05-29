@@ -382,11 +382,11 @@ public sealed class Eval<TInput, TOutput>
             ? $"classifier_{classifierIndex}"
             : classifier.Name;
 
-        var classifierActivity = _activitySource.StartActivity($"classifier:{resolvedName}");
+        var classifierActivity = _activitySource.StartActivity(resolvedName);
         classifierActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
         classifierActivity?.SetTag(
             "braintrust.span_attributes",
-            ToJson(new { type = "classifier", purpose = "scorer" }));
+            ToJson(new { type = "classifier", name = resolvedName, purpose = "scorer" }));
 
         var datasetCase = taskResult.DatasetCase;
         classifierActivity?.SetTag(

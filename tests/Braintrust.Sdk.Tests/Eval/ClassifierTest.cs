@@ -251,7 +251,7 @@ public class ClassifierTest : IDisposable
         Assert.True(classifications.RootElement.TryGetProperty("working", out _));
 
         // The broken classifier span has error status + exception event
-        var brokenSpan = classifierSpans.First(s => s.DisplayName == "classifier:broken");
+        var brokenSpan = classifierSpans.First(s => s.DisplayName == "broken");
         Assert.Equal(ActivityStatusCode.Error, brokenSpan.Status);
         Assert.NotEmpty(brokenSpan.Events);
 
@@ -273,12 +273,13 @@ public class ClassifierTest : IDisposable
             });
 
         var span = Assert.Single(classifierSpans);
-        Assert.Equal("classifier:my_classifier", span.DisplayName);
+        Assert.Equal("my_classifier", span.DisplayName);
 
         var attrsJson = span.GetTagItem("braintrust.span_attributes") as string;
         Assert.NotNull(attrsJson);
         using var doc = JsonDocument.Parse(attrsJson);
         Assert.Equal("classifier", doc.RootElement.GetProperty("type").GetString());
+        Assert.Equal("my_classifier", doc.RootElement.GetProperty("name").GetString());
         Assert.Equal("scorer", doc.RootElement.GetProperty("purpose").GetString());
     }
 
@@ -528,7 +529,13 @@ public class ClassifierTest : IDisposable
         await eval.RunAsync();
 
         var rootSpans = captured.Where(a => a.DisplayName == "eval").ToList();
-        var classifierSpans = captured.Where(a => a.DisplayName.StartsWith("classifier:")).ToList();
+        var classifierSpans = captured
+            .Where(a =>
+            {
+                var attrs = a.GetTagItem("braintrust.span_attributes") as string;
+                return attrs != null && attrs.Contains("\"type\":\"classifier\"");
+            })
+            .ToList();
         return (rootSpans, classifierSpans);
     }
 
