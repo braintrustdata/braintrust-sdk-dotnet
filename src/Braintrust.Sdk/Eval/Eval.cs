@@ -32,6 +32,7 @@ public sealed class Eval<TInput, TOutput>
     private readonly IDataset<TInput, TOutput> _dataset;
     private readonly ITask<TInput, TOutput> _task;
     private readonly IReadOnlyList<IScorer<TInput, TOutput>> _scorers;
+    private readonly IReadOnlyList<IClassifier<TInput, TOutput>> _classifiers;
     private readonly IReadOnlyList<string>? _experimentTags;
     private readonly IReadOnlyDictionary<string, object>? _experimentMetadata;
     private readonly int? _maxConcurrency;
@@ -49,6 +50,7 @@ public sealed class Eval<TInput, TOutput>
         _dataset = builder._dataset ?? throw new ArgumentNullException(nameof(builder._dataset));
         _task = builder._task ?? throw new ArgumentNullException(nameof(builder._task));
         _scorers = builder._scorers.ToList();
+        _classifiers = builder._classifiers.ToList();
         _experimentTags = builder._experimentTags;
         _experimentMetadata = builder._experimentMetadata;
         _maxConcurrency = builder._maxConcurrency;
@@ -165,12 +167,13 @@ public sealed class Eval<TInput, TOutput>
             }
             if (taskException == null)
             {
-                // Task succeeded — record output and run all scorers in parallel, each in their own span
+                // Task succeeded — record output and run all scorers and classifiers in parallel, each in their own span
                 rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult!.Value.Result }));
 
-                // Flush OTel spans to Braintrust before scoring so traced scorers can access them
-                var hasTracedScorers = _scorers.OfType<ITracedScorer<TInput, TOutput>>().Any();
-                if (hasTracedScorers)
+                // Flush OTel spans to Braintrust before scoring so traced scorers/classifiers can access them
+                var needsTraceFlush = _scorers.OfType<ITracedScorer<TInput, TOutput>>().Any()
+                    || _classifiers.OfType<ITracedClassifier<TInput, TOutput>>().Any();
+                if (needsTraceFlush)
                 {
                     BraintrustTracing.ForceFlush();
                 }
@@ -179,7 +182,8 @@ public sealed class Eval<TInput, TOutput>
                 var rootSpanId = rootActivity.TraceId.ToHexString();
                 var trace = new EvalTrace(ct => _btqlClient.QuerySpansAsync(experimentId, rootSpanId, ct));
 
-                await RunScorers(experimentId, rootActivity, taskResult!.Value, trace).ConfigureAwait(false);
+                await RunScorersAndClassifiers(experimentId, rootActivity, taskResult!.Value, trace, datasetCase.Metadata)
+                    .ConfigureAwait(false);
             }
             else
             {
@@ -234,19 +238,28 @@ public sealed class Eval<TInput, TOutput>
     }
 
     /// <summary>
-    /// Runs all scorers for a successful task result, each in their own score span.
-    /// Calls <see cref="IScorer{TInput,TOutput}.Score"/> (or <see cref="ITracedScorer{TInput,TOutput}.ScoreAsync"/>
-    /// for traced scorers) and falls back to <see cref="IScorer{TInput,TOutput}.ScoreForScorerException"/> on error.
+    /// Runs all scorers and classifiers for a successful task result in parallel, each in their own span.
+    /// After completion, aggregates classifier results onto the root span as <c>braintrust.classifications</c>
+    /// and merges any classifier errors into the root span's <c>braintrust.metadata</c> under
+    /// <c>classifier_errors</c>.
     /// </summary>
-    private async Task RunScorers(
+    private async Task RunScorersAndClassifiers(
         string experimentId,
         Activity rootActivity,
         TaskResult<TInput, TOutput> taskResult,
-        EvalTrace trace)
+        EvalTrace trace,
+        IReadOnlyDictionary<string, object> caseMetadata)
     {
         var scorerTasks = _scorers.Select(scorer =>
             RunSingleScorer(experimentId, rootActivity, scorer, taskResult, trace));
-        await Task.WhenAll(scorerTasks).ConfigureAwait(false);
+
+        var classifierOutcomes = new ClassifierOutcome?[_classifiers.Count];
+        var classifierTasks = _classifiers.Select((classifier, index) =>
+            RunSingleClassifier(experimentId, rootActivity, classifier, index, taskResult, trace, classifierOutcomes));
+
+        await Task.WhenAll(scorerTasks.Concat(classifierTasks)).ConfigureAwait(false);
+
+        AggregateClassifierOutcomes(rootActivity, caseMetadata, classifierOutcomes);
     }
 
     private async Task RunSingleScorer(
@@ -327,6 +340,214 @@ public sealed class Eval<TInput, TOutput>
         }
     }
 
+    /// <summary>
+    /// Per-classifier outcome captured after running. Either a successful list of normalized items
+    /// (already grouped by resolved name) or an error message.
+    /// </summary>
+    private sealed class ClassifierOutcome
+    {
+        public string ClassifierName { get; }
+        public IReadOnlyList<(string Name, Dictionary<string, object> Item)>? Items { get; }
+        public string? ErrorMessage { get; }
+
+        private ClassifierOutcome(
+            string classifierName,
+            IReadOnlyList<(string Name, Dictionary<string, object> Item)>? items,
+            string? errorMessage)
+        {
+            ClassifierName = classifierName;
+            Items = items;
+            ErrorMessage = errorMessage;
+        }
+
+        public static ClassifierOutcome Success(
+            string classifierName,
+            IReadOnlyList<(string Name, Dictionary<string, object> Item)> items)
+            => new(classifierName, items, null);
+
+        public static ClassifierOutcome Error(string classifierName, string errorMessage)
+            => new(classifierName, null, errorMessage);
+    }
+
+    private async Task RunSingleClassifier(
+        string experimentId,
+        Activity rootActivity,
+        IClassifier<TInput, TOutput> classifier,
+        int classifierIndex,
+        TaskResult<TInput, TOutput> taskResult,
+        EvalTrace trace,
+        ClassifierOutcome?[] outcomes)
+    {
+        var resolvedName = string.IsNullOrWhiteSpace(classifier.Name)
+            ? $"classifier_{classifierIndex}"
+            : classifier.Name;
+
+        var classifierActivity = _activitySource.StartActivity(resolvedName);
+        classifierActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
+        classifierActivity?.SetTag(
+            "braintrust.span_attributes",
+            ToJson(new { type = "classifier", name = resolvedName, purpose = "scorer" }));
+
+        var datasetCase = taskResult.DatasetCase;
+        classifierActivity?.SetTag(
+            "braintrust.input_json",
+            ToJson(new
+            {
+                input = datasetCase.Input,
+                expected = datasetCase.Expected,
+                output = taskResult.Result,
+                metadata = datasetCase.Metadata
+            }));
+
+        try
+        {
+            using var classifierScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
+
+            IReadOnlyList<Classification> rawResults;
+            try
+            {
+                rawResults = classifier is ITracedClassifier<TInput, TOutput> tracedClassifier
+                    ? await tracedClassifier.Classify(taskResult, trace).ConfigureAwait(false)
+                    : await classifier.Classify(taskResult).ConfigureAwait(false);
+
+                if (rawResults == null)
+                {
+                    rawResults = Array.Empty<Classification>();
+                }
+            }
+            catch (Exception ex)
+            {
+                classifierActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                classifierActivity?.AddEvent(CreateExceptionEvent(ex));
+                outcomes[classifierIndex] = ClassifierOutcome.Error(resolvedName, ex.Message);
+                return;
+            }
+
+            // Normalize: resolve name + validate, build storage items (no Name key).
+            var normalized = new List<(string Name, Dictionary<string, object> Item)>(rawResults.Count);
+            try
+            {
+                foreach (var classification in rawResults)
+                {
+                    if (string.IsNullOrEmpty(classification.Id))
+                    {
+                        throw new InvalidOperationException(
+                            "When returning structured classifier results, each classification must be a non-empty object.");
+                    }
+
+                    var groupingName = string.IsNullOrWhiteSpace(classification.Name)
+                        ? resolvedName
+                        : classification.Name!;
+
+                    var item = new Dictionary<string, object> { ["id"] = classification.Id };
+                    if (classification.Label != null)
+                    {
+                        item["label"] = classification.Label;
+                    }
+                    if (classification.Metadata != null && classification.Metadata.Count > 0)
+                    {
+                        item["metadata"] = classification.Metadata;
+                    }
+
+                    normalized.Add((groupingName, item));
+                }
+            }
+            catch (Exception ex)
+            {
+                classifierActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                classifierActivity?.AddEvent(CreateExceptionEvent(ex));
+                outcomes[classifierIndex] = ClassifierOutcome.Error(resolvedName, ex.Message);
+                return;
+            }
+
+            // Build output_json keyed by resolved name for the classifier span.
+            if (normalized.Count > 0)
+            {
+                var outputByName = new Dictionary<string, List<Dictionary<string, object>>>();
+                foreach (var (name, item) in normalized)
+                {
+                    if (!outputByName.TryGetValue(name, out var list))
+                    {
+                        list = new List<Dictionary<string, object>>();
+                        outputByName[name] = list;
+                    }
+                    list.Add(item);
+                }
+                classifierActivity?.SetTag("braintrust.output_json", ToJson(outputByName));
+            }
+
+            outcomes[classifierIndex] = ClassifierOutcome.Success(resolvedName, normalized);
+        }
+        finally
+        {
+            classifierActivity?.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Aggregates per-classifier outcomes onto the root span:
+    /// <list type="bullet">
+    ///   <item>Sets <c>braintrust.classifications</c> when any classifications were produced.</item>
+    ///   <item>Merges any classifier errors into <c>braintrust.metadata</c> under <c>classifier_errors</c>.</item>
+    /// </list>
+    /// </summary>
+    private static void AggregateClassifierOutcomes(
+        Activity rootActivity,
+        IReadOnlyDictionary<string, object> caseMetadata,
+        ClassifierOutcome?[] outcomes)
+    {
+        if (outcomes.Length == 0)
+        {
+            return;
+        }
+
+        var classifications = new Dictionary<string, List<Dictionary<string, object>>>();
+        var classifierErrors = new Dictionary<string, string>();
+
+        foreach (var outcome in outcomes)
+        {
+            if (outcome == null)
+            {
+                continue;
+            }
+
+            if (outcome.ErrorMessage != null)
+            {
+                classifierErrors[outcome.ClassifierName] = outcome.ErrorMessage;
+                continue;
+            }
+
+            if (outcome.Items == null)
+            {
+                continue;
+            }
+
+            foreach (var (name, item) in outcome.Items)
+            {
+                if (!classifications.TryGetValue(name, out var list))
+                {
+                    list = new List<Dictionary<string, object>>();
+                    classifications[name] = list;
+                }
+                list.Add(item);
+            }
+        }
+
+        if (classifications.Count > 0)
+        {
+            rootActivity.SetTag("braintrust.classifications", ToJson(classifications));
+        }
+
+        if (classifierErrors.Count > 0)
+        {
+            var merged = new Dictionary<string, object>(caseMetadata)
+            {
+                ["classifier_errors"] = classifierErrors
+            };
+            rootActivity.SetTag("braintrust.metadata", ToJson(merged));
+        }
+    }
+
     private static string ToJson(object obj)
     {
         return JsonSerializer.Serialize(obj, JsonOptions);
@@ -388,6 +609,7 @@ public sealed class Eval<TInput, TOutput>
         internal IDataset<TInput, TOutput>? _dataset;
         internal ITask<TInput, TOutput>? _task;
         internal List<IScorer<TInput, TOutput>> _scorers = new();
+        internal List<IClassifier<TInput, TOutput>> _classifiers = new();
         internal IReadOnlyList<string>? _experimentTags;
         internal IReadOnlyDictionary<string, object>? _experimentMetadata;
         internal int? _maxConcurrency = 10;
@@ -406,9 +628,9 @@ public sealed class Eval<TInput, TOutput>
             _apiClient ??= BraintrustApiClient.Of(_config);
             _btqlClient ??= new BtqlClient(_config);
 
-            if (_scorers.Count == 0)
+            if (_scorers.Count == 0 && _classifiers.Count == 0)
             {
-                throw new InvalidOperationException("Must provide at least one scorer");
+                throw new InvalidOperationException("Must provide at least one scorer or classifier");
             }
 
             if (_dataset == null)
@@ -558,6 +780,16 @@ public sealed class Eval<TInput, TOutput>
         public Builder Scorers(params IScorer<TInput, TOutput>[] scorers)
         {
             _scorers = scorers.ToList();
+            return this;
+        }
+
+        /// <summary>
+        /// Set the classifiers.
+        /// At least one of <see cref="Scorers"/> or <see cref="Classifiers"/> must be provided.
+        /// </summary>
+        public Builder Classifiers(params IClassifier<TInput, TOutput>[] classifiers)
+        {
+            _classifiers = classifiers.ToList();
             return this;
         }
 
