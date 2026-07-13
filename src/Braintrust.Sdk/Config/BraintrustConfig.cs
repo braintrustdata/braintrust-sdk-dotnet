@@ -1,5 +1,7 @@
 namespace Braintrust.Sdk.Config;
 
+public sealed record SpanOriginEnvironment(string Type, string? Name = null);
+
 /// <summary>
 /// Configuration for Braintrust SDK with sane defaults.
 ///
@@ -25,6 +27,7 @@ public sealed class BraintrustConfig : BaseConfig
     public bool EnableTraceConsoleLog { get; }
     public bool Debug { get; }
     public TimeSpan RequestTimeout { get; }
+    public SpanOriginEnvironment? Environment { get; }
 
     public static BraintrustConfig FromEnvironment()
     {
@@ -69,6 +72,7 @@ public sealed class BraintrustConfig : BaseConfig
         EnableTraceConsoleLog = GetConfig("BRAINTRUST_ENABLE_TRACE_CONSOLE_LOG", false);
         Debug = GetConfig("BRAINTRUST_DEBUG", false);
         RequestTimeout = TimeSpan.FromSeconds(GetConfig("BRAINTRUST_REQUEST_TIMEOUT", 30));
+        Environment = DetectEnvironment();
 
         if (string.IsNullOrEmpty(DefaultProjectId) && string.IsNullOrEmpty(DefaultProjectName))
         {
@@ -84,7 +88,7 @@ public sealed class BraintrustConfig : BaseConfig
             return string.IsNullOrWhiteSpace(_apiKeyOverride) ? null : _apiKeyOverride;
         }
 
-        var value = Environment.GetEnvironmentVariable(ApiKeySettingName);
+        var value = global::System.Environment.GetEnvironmentVariable(ApiKeySettingName);
         if (value == NullOverride)
         {
             return null;
@@ -101,7 +105,7 @@ public sealed class BraintrustConfig : BaseConfig
             return immediateApiKey;
         }
 
-        if (_hasApiKeyOverride || Environment.GetEnvironmentVariable(ApiKeySettingName) == NullOverride)
+        if (_hasApiKeyOverride || global::System.Environment.GetEnvironmentVariable(ApiKeySettingName) == NullOverride)
         {
             throw MissingApiKeyException();
         }
@@ -151,5 +155,130 @@ public sealed class BraintrustConfig : BaseConfig
             // should never happen
             throw new InvalidOperationException("A project name or ID is required.");
         }
+    }
+
+    private SpanOriginEnvironment? DetectEnvironment()
+    {
+        var environmentType = GetEnvValue("BRAINTRUST_ENVIRONMENT_TYPE");
+        if (string.IsNullOrWhiteSpace(environmentType))
+        {
+            environmentType = ReadBraintrustEnvFileValue("BRAINTRUST_ENVIRONMENT_TYPE");
+        }
+        if (!string.IsNullOrWhiteSpace(environmentType))
+        {
+            var name = GetEnvValue("BRAINTRUST_ENVIRONMENT_NAME");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = ReadBraintrustEnvFileValue("BRAINTRUST_ENVIRONMENT_NAME");
+            }
+            return new SpanOriginEnvironment(environmentType.Trim(), string.IsNullOrWhiteSpace(name) ? null : name.Trim());
+        }
+
+        foreach (var (key, name) in new[]
+        {
+            ("GITHUB_ACTIONS", "github_actions"),
+            ("GITLAB_CI", "gitlab_ci"),
+            ("CIRCLECI", "circleci"),
+            ("BUILDKITE", "buildkite"),
+            ("JENKINS_URL", "jenkins"),
+            ("JENKINS_HOME", "jenkins"),
+            ("TF_BUILD", "azure_pipelines"),
+            ("TEAMCITY_VERSION", "teamcity"),
+            ("TRAVIS", "travis"),
+            ("BITBUCKET_BUILD_NUMBER", "bitbucket")
+        })
+        {
+            if (!string.IsNullOrWhiteSpace(GetEnvValue(key)))
+            {
+                return new SpanOriginEnvironment("ci", name);
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(GetEnvValue("CI")))
+        {
+            return new SpanOriginEnvironment("ci", "ci");
+        }
+
+        foreach (var (key, name) in new[]
+        {
+            ("VERCEL", "vercel"),
+            ("NETLIFY", "netlify"),
+            ("AWS_LAMBDA_FUNCTION_NAME", "aws_lambda"),
+            ("AWS_EXECUTION_ENV", "aws_lambda"),
+            ("K_SERVICE", "cloud_run"),
+            ("FUNCTION_TARGET", "gcp_functions"),
+            ("KUBERNETES_SERVICE_HOST", "kubernetes"),
+            ("ECS_CONTAINER_METADATA_URI", "ecs"),
+            ("ECS_CONTAINER_METADATA_URI_V4", "ecs"),
+            ("DYNO", "heroku"),
+            ("FLY_APP_NAME", "fly"),
+            ("RAILWAY_ENVIRONMENT", "railway"),
+            ("RENDER_SERVICE_NAME", "render")
+        })
+        {
+            if (!string.IsNullOrWhiteSpace(GetEnvValue(key)))
+            {
+                return new SpanOriginEnvironment("server", name);
+            }
+        }
+
+        return DeploymentModeEnvironment(GetEnvValue("ASPNETCORE_ENVIRONMENT"))
+            ?? DeploymentModeEnvironment(GetEnvValue("DOTNET_ENVIRONMENT"));
+    }
+
+    private static SpanOriginEnvironment? DeploymentModeEnvironment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "production" or "staging" => new SpanOriginEnvironment("server", normalized),
+            "development" or "local" => new SpanOriginEnvironment("local", normalized),
+            _ => null
+        };
+    }
+
+    private static string? ReadBraintrustEnvFileValue(string key)
+    {
+        var dir = Directory.GetCurrentDirectory();
+        for (var depth = 0; depth <= 64; depth++)
+        {
+            var path = Path.Combine(dir, ".env.braintrust");
+            if (File.Exists(path))
+            {
+                foreach (var line in File.ReadAllLines(path))
+                {
+                    var trimmed = line.Trim();
+                    if (trimmed.Length == 0 || trimmed.StartsWith("#", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var index = trimmed.IndexOf('=');
+                    if (index <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (trimmed[..index].Trim() == key)
+                    {
+                        return trimmed[(index + 1)..].Trim().Trim('"', '\'');
+                    }
+                }
+                return null;
+            }
+
+            var parent = Directory.GetParent(dir);
+            if (parent == null)
+            {
+                return null;
+            }
+            dir = parent.FullName;
+        }
+
+        return null;
     }
 }
