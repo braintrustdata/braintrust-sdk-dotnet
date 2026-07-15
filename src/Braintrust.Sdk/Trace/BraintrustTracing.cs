@@ -75,8 +75,7 @@ public static class BraintrustTracing
 
         tracerProviderBuilder
             .SetResourceBuilder(ResourceBuilder.CreateDefault()
-                .AddService(serviceName: OtelServiceName, serviceVersion: InstrumentationVersion)
-                .AddAttributes(SpanOriginEnvironmentAttributes(config)))
+                .AddService(serviceName: OtelServiceName, serviceVersion: InstrumentationVersion))
             .AddSource(InstrumentationName)
             .AddProcessor(spanProcessor)
             .AddOtlpExporter(otlpOptions =>
@@ -111,21 +110,4 @@ public static class BraintrustTracing
         return _activitySource.Value;
     }
 
-    private static IEnumerable<KeyValuePair<string, object>> SpanOriginEnvironmentAttributes(BraintrustConfig config)
-    {
-        if (config.Environment == null)
-        {
-            return Array.Empty<KeyValuePair<string, object>>();
-        }
-
-        var attributes = new List<KeyValuePair<string, object>>
-        {
-            new("braintrust.environment.type", config.Environment.Type)
-        };
-        if (!string.IsNullOrEmpty(config.Environment.Name))
-        {
-            attributes.Add(new KeyValuePair<string, object>("braintrust.environment.name", config.Environment.Name));
-        }
-        return attributes;
-    }
 }

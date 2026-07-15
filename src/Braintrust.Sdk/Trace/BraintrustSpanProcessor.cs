@@ -14,8 +14,6 @@ internal sealed class BraintrustSpanProcessor : BaseProcessor<Activity>
 {
     public const string ParentAttributeKey = "braintrust.parent";
     private const string ContextJsonAttributeKey = "braintrust.context_json";
-    private const string EnvironmentTypeAttributeKey = "braintrust.environment.type";
-    private const string EnvironmentNameAttributeKey = "braintrust.environment.name";
 
     private readonly BraintrustConfig _config;
 
@@ -64,14 +62,6 @@ internal sealed class BraintrustSpanProcessor : BaseProcessor<Activity>
     private void AddSpanOrigin(Activity activity)
     {
         activity.SetTag(ContextJsonAttributeKey, BuildContextJson(activity.GetTagItem(ContextJsonAttributeKey) as string));
-        if (_config.Environment != null)
-        {
-            activity.SetTag(EnvironmentTypeAttributeKey, _config.Environment.Type);
-            if (!string.IsNullOrEmpty(_config.Environment.Name))
-            {
-                activity.SetTag(EnvironmentNameAttributeKey, _config.Environment.Name);
-            }
-        }
     }
 
     private string BuildContextJson(string? existingContextJson)

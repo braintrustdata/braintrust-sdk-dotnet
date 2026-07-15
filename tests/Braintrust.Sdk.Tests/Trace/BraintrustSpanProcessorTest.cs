@@ -156,6 +156,8 @@ public class BraintrustSpanProcessorTest : IDisposable
             Assert.Equal(
                 "braintrust.sdk.dotnet",
                 document.RootElement.GetProperty("span_origin").GetProperty("name").GetString());
+            Assert.Null(activity.GetTagItem("braintrust.environment.type"));
+            Assert.Null(activity.GetTagItem("braintrust.environment.name"));
         }
     }
 }
