@@ -26,8 +26,6 @@ internal sealed class BraintrustSpanProcessor : BaseProcessor<Activity>
 
     public override void OnStart(Activity activity)
     {
-        AddSpanOrigin(activity);
-
         // Check if activity already has a parent attribute
         var existingParent = activity.GetTagItem(ParentAttributeKey);
         if (existingParent != null)
@@ -144,6 +142,7 @@ internal sealed class BraintrustSpanProcessor : BaseProcessor<Activity>
 
     public override void OnEnd(Activity activity)
     {
+        AddSpanOrigin(activity);
         if (_config.Debug)
         {
             LogActivityDetails(activity);

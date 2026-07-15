@@ -159,19 +159,15 @@ public sealed class BraintrustConfig : BaseConfig
 
     private SpanOriginEnvironment? DetectEnvironment()
     {
-        var environmentType = GetEnvValue("BRAINTRUST_ENVIRONMENT_TYPE");
-        if (string.IsNullOrWhiteSpace(environmentType))
-        {
-            environmentType = ReadBraintrustEnvFileValue("BRAINTRUST_ENVIRONMENT_TYPE");
-        }
+        var environmentType = GetEnvironmentConfigValue("BRAINTRUST_ENVIRONMENT_TYPE");
         if (!string.IsNullOrWhiteSpace(environmentType))
         {
-            var name = GetEnvValue("BRAINTRUST_ENVIRONMENT_NAME");
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                name = ReadBraintrustEnvFileValue("BRAINTRUST_ENVIRONMENT_NAME");
-            }
+            var name = GetEnvironmentConfigValue("BRAINTRUST_ENVIRONMENT_NAME");
             return new SpanOriginEnvironment(environmentType.Trim(), string.IsNullOrWhiteSpace(name) ? null : name.Trim());
+        }
+        if (EnvOverrides.ContainsKey("BRAINTRUST_ENVIRONMENT_TYPE"))
+        {
+            return null;
         }
 
         foreach (var (key, name) in new[]
@@ -198,17 +194,62 @@ public sealed class BraintrustConfig : BaseConfig
             return new SpanOriginEnvironment("ci", "ci");
         }
 
+        var serverName = DetectServerEnvironmentName();
+        if (serverName != null)
+        {
+            return new SpanOriginEnvironment("server", serverName);
+        }
+
+        return DeploymentModeEnvironment(GetEnvValue("ASPNETCORE_ENVIRONMENT"))
+            ?? DeploymentModeEnvironment(GetEnvValue("DOTNET_ENVIRONMENT"));
+    }
+
+    private string? GetEnvironmentConfigValue(string key)
+    {
+        var value = GetEnvValue(key);
+        if (EnvOverrides.ContainsKey(key))
+        {
+            return value;
+        }
+        return string.IsNullOrWhiteSpace(value) ? ReadBraintrustEnvFileValue(key) : value;
+    }
+
+    private string? DetectServerEnvironmentName()
+    {
+        foreach (var (key, name) in new[] { ("VERCEL", "vercel"), ("NETLIFY", "netlify") })
+        {
+            if (!string.IsNullOrWhiteSpace(GetEnvValue(key)))
+            {
+                return name;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(GetEnvValue("ECS_CONTAINER_METADATA_URI")) ||
+            !string.IsNullOrWhiteSpace(GetEnvValue("ECS_CONTAINER_METADATA_URI_V4")))
+        {
+            return "ecs";
+        }
+
+        var awsExecutionEnv = GetEnvValue("AWS_EXECUTION_ENV");
+        if (awsExecutionEnv?.StartsWith("AWS_ECS_", StringComparison.Ordinal) == true)
+        {
+            return "ecs";
+        }
+        if (awsExecutionEnv?.StartsWith("AWS_Lambda_", StringComparison.Ordinal) == true)
+        {
+            return "aws_lambda";
+        }
+
+        if (!string.IsNullOrWhiteSpace(GetEnvValue("AWS_LAMBDA_FUNCTION_NAME")))
+        {
+            return "aws_lambda";
+        }
+
         foreach (var (key, name) in new[]
         {
-            ("VERCEL", "vercel"),
-            ("NETLIFY", "netlify"),
-            ("AWS_LAMBDA_FUNCTION_NAME", "aws_lambda"),
-            ("AWS_EXECUTION_ENV", "aws_lambda"),
             ("K_SERVICE", "cloud_run"),
             ("FUNCTION_TARGET", "gcp_functions"),
             ("KUBERNETES_SERVICE_HOST", "kubernetes"),
-            ("ECS_CONTAINER_METADATA_URI", "ecs"),
-            ("ECS_CONTAINER_METADATA_URI_V4", "ecs"),
             ("DYNO", "heroku"),
             ("FLY_APP_NAME", "fly"),
             ("RAILWAY_ENVIRONMENT", "railway"),
@@ -217,12 +258,11 @@ public sealed class BraintrustConfig : BaseConfig
         {
             if (!string.IsNullOrWhiteSpace(GetEnvValue(key)))
             {
-                return new SpanOriginEnvironment("server", name);
+                return name;
             }
         }
 
-        return DeploymentModeEnvironment(GetEnvValue("ASPNETCORE_ENVIRONMENT"))
-            ?? DeploymentModeEnvironment(GetEnvValue("DOTNET_ENVIRONMENT"));
+        return null;
     }
 
     private static SpanOriginEnvironment? DeploymentModeEnvironment(string? value)

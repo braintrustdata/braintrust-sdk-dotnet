@@ -158,4 +158,54 @@ public class BraintrustConfigTest
         Assert.True(config.Debug);
         Assert.True(config.EnableTraceConsoleLog);
     }
+
+    [Fact]
+    public void ExplicitNullEnvironmentOverrideDisablesDetection()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_ENVIRONMENT_TYPE", null),
+            ("BRAINTRUST_ENVIRONMENT_NAME", null),
+            ("CI", "true"),
+            ("AWS_EXECUTION_ENV", "AWS_ECS_FARGATE")
+        );
+
+        Assert.Null(config.Environment);
+    }
+
+    [Fact]
+    public void AwsExecutionEnvClassifiesEcsBeforeLambda()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("GITHUB_ACTIONS", BaseConfig.NullOverride),
+            ("GITLAB_CI", BaseConfig.NullOverride),
+            ("CIRCLECI", BaseConfig.NullOverride),
+            ("BUILDKITE", BaseConfig.NullOverride),
+            ("CI", BaseConfig.NullOverride),
+            ("AWS_EXECUTION_ENV", "AWS_ECS_FARGATE")
+        );
+
+        Assert.NotNull(config.Environment);
+        Assert.Equal("server", config.Environment.Type);
+        Assert.Equal("ecs", config.Environment.Name);
+    }
+
+    [Fact]
+    public void AwsExecutionEnvClassifiesLambdaWhenLambdaSpecific()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("GITHUB_ACTIONS", BaseConfig.NullOverride),
+            ("GITLAB_CI", BaseConfig.NullOverride),
+            ("CIRCLECI", BaseConfig.NullOverride),
+            ("BUILDKITE", BaseConfig.NullOverride),
+            ("CI", BaseConfig.NullOverride),
+            ("AWS_EXECUTION_ENV", "AWS_Lambda_dotnet8")
+        );
+
+        Assert.NotNull(config.Environment);
+        Assert.Equal("server", config.Environment.Type);
+        Assert.Equal("aws_lambda", config.Environment.Name);
+    }
 }
