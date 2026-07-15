@@ -87,7 +87,7 @@ public class EvalTest : IDisposable
             Assert.Equal("experiment_id:test-experiment-id", span.GetTagItem("braintrust.parent"));
             Assert.Equal("eval", GetSpanType(span));
             Assert.NotNull(span.GetTagItem("braintrust.input_json"));
-            Assert.NotNull(span.GetTagItem("braintrust.expected"));
+            Assert.NotNull(span.GetTagItem("braintrust.expected_json"));
             Assert.Equal("fruit", GetOutput<string>(span));
         });
 
@@ -98,6 +98,9 @@ public class EvalTest : IDisposable
         {
             Assert.Equal(ActivityStatusCode.Unset, span.Status);
             Assert.Equal("task", GetSpanType(span));
+            Assert.NotNull(span.GetTagItem("braintrust.input_json"));
+            Assert.NotNull(span.GetTagItem("braintrust.expected_json"));
+            Assert.Equal("fruit", GetOutput<string>(span));
             Assert.Empty(span.Events);
         });
 
@@ -996,22 +999,20 @@ public class EvalTest : IDisposable
         return doc.RootElement.GetProperty("type").GetString();
     }
 
-    /// <summary>Returns the "input" field from braintrust.input_json JSON.</summary>
+    /// <summary>Returns the raw braintrust.input_json JSON value.</summary>
     private static T? GetInput<T>(Activity span)
     {
         var json = span.GetTagItem("braintrust.input_json") as string;
         if (json == null) return default;
-        var doc = JsonDocument.Parse(json);
-        return JsonSerializer.Deserialize<T>(doc.RootElement.GetProperty("input").GetRawText());
+        return JsonSerializer.Deserialize<T>(json);
     }
 
-    /// <summary>Returns the "output" field from braintrust.output_json JSON.</summary>
+    /// <summary>Returns the raw braintrust.output_json JSON value.</summary>
     private static T? GetOutput<T>(Activity span)
     {
         var json = span.GetTagItem("braintrust.output_json") as string;
         if (json == null) return default;
-        var doc = JsonDocument.Parse(json);
-        return JsonSerializer.Deserialize<T>(doc.RootElement.GetProperty("output").GetRawText());
+        return JsonSerializer.Deserialize<T>(json);
     }
 
     /// <summary>Returns the named score value from braintrust.scores JSON.</summary>
