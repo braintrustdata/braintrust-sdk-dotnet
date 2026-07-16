@@ -124,8 +124,8 @@ public sealed class Eval<TInput, TOutput>
         {
             rootActivity.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
             rootActivity.SetTag("braintrust.span_attributes", ToJson(new { type = "eval" }));
-            rootActivity.SetTag("braintrust.input_json", ToJson(new { input = datasetCase.Input }));
-            rootActivity.SetTag("braintrust.expected", ToJson(datasetCase.Expected));
+            rootActivity.SetTag("braintrust.input_json", ToJson(datasetCase.Input));
+            rootActivity.SetTag("braintrust.expected_json", ToJson(datasetCase.Expected));
 
             if (datasetCase.Tags.Count > 0)
             {
@@ -147,11 +147,14 @@ public sealed class Eval<TInput, TOutput>
                 var taskActivity = _activitySource.StartActivity("task");
                 taskActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
                 taskActivity?.SetTag("braintrust.span_attributes", ToJson(new { type = "task" }));
+                taskActivity?.SetTag("braintrust.input_json", ToJson(datasetCase.Input));
+                taskActivity?.SetTag("braintrust.expected_json", ToJson(datasetCase.Expected));
 
                 try
                 {
                     using var taskScope = BraintrustContext.OfExperiment(experimentId).MakeCurrent();
                     taskResult = await _task.Apply(datasetCase).ConfigureAwait(false);
+                    taskActivity?.SetTag("braintrust.output_json", ToJson(taskResult.Value.Result));
                 }
                 catch (Exception ex)
                 {
@@ -168,7 +171,7 @@ public sealed class Eval<TInput, TOutput>
             if (taskException == null)
             {
                 // Task succeeded — record output and run all scorers and classifiers in parallel, each in their own span
-                rootActivity.SetTag("braintrust.output_json", ToJson(new { output = taskResult!.Value.Result }));
+                rootActivity.SetTag("braintrust.output_json", ToJson(taskResult!.Value.Result));
 
                 // Flush OTel spans to Braintrust before scoring so traced scorers/classifiers can access them
                 var needsTraceFlush = _scorers.OfType<ITracedScorer<TInput, TOutput>>().Any()
