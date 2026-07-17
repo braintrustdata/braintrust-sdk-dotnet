@@ -129,4 +129,35 @@ public class BraintrustSpanProcessorTest : IDisposable
             Assert.Equal("project_id:existing", parent);
         }
     }
+
+    [Fact]
+    public void OnEnd_MergesSpanOriginWithContextJsonSetAfterStart()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_DEFAULT_PROJECT_ID", "proj-config")
+        );
+        var processor = new BraintrustSpanProcessor(config);
+
+        using (var activity = _activitySource.StartActivity("test-span"))
+        {
+            Assert.NotNull(activity);
+            processor.OnStart(activity);
+            activity.SetTag("braintrust.context_json", "{\"metadata\":{\"source\":\"late-attribute\"}}");
+
+            processor.OnEnd(activity);
+
+            var contextJson = activity.GetTagItem("braintrust.context_json") as string;
+            Assert.NotNull(contextJson);
+            using var document = System.Text.Json.JsonDocument.Parse(contextJson);
+            Assert.Equal(
+                "late-attribute",
+                document.RootElement.GetProperty("metadata").GetProperty("source").GetString());
+            Assert.Equal(
+                "braintrust.sdk.dotnet",
+                document.RootElement.GetProperty("span_origin").GetProperty("name").GetString());
+            Assert.Null(activity.GetTagItem("braintrust.environment.type"));
+            Assert.Null(activity.GetTagItem("braintrust.environment.name"));
+        }
+    }
 }
