@@ -1,0 +1,140 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Generated Braintrust API client.
+
+    The build fetches openapi/spec.yaml from the pinned braintrust-openapi ref,
+    normalizes it (see build/SpecNormalizer.cs), then runs NSwag to generate a
+    C# client under obj/generated, which is compiled into this assembly.
+    Everything is pure .NET (no bash/python/JVM). Nothing here is committed - the
+    client is regenerated on build.
+
+    Bump the pinned ref below. To generate from a local checkout instead:
+      BRAINTRUST_OPENAPI_ROOT=/path/to/braintrust-openapi dotnet build
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Not shipped as its own package; excluded from the versioning/verify
+         machinery in Directory.Build.targets (gated on IsPackable != false). -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Generated code: suppress nullable/style warnings it does not satisfy. -->
+    <NoWarn>$(NoWarn);CS8618;CS8625;CS8600;CS8601;CS8602;CS8603;CS8604;CS0472;CS1591;CS8619;CS8620;CS8714</NoWarn>
+
+    <!-- braintrust-openapi ref (SHA or tag) - mirrors gradle.properties in sdk-java.
+         Pinned rather than floating so builds are reproducible and the ref-in-path
+         spec cache below stays valid; bump it to take new API surface. -->
+    <BraintrustOpenApiRef>014842adca330b8385378a9fef94d1873b29338f</BraintrustOpenApiRef>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- build/ holds the MSBuild inline-task source and NSwag templates. The task
+         source is compiled by RoslynCodeTaskFactory against the MSBuild assemblies,
+         not by this project, so keep it out of the default compile glob. -->
+    <Compile Remove="build/**/*.cs" />
+    <None Include="build/**/*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build-time only: NSwag.MSBuild ships the generator runner; no runtime dep. -->
+    <PackageReference Include="NSwag.MSBuild" Version="14.7.1" PrivateAssets="all" />
+    <!-- Build-time only: YAML parser for the spec-normalization task below.
+         GeneratePathProperty exposes $(PkgYamlDotNet) for the inline-task reference. -->
+    <PackageReference Include="YamlDotNet" Version="13.7.1" PrivateAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <!-- ── Paths ─────────────────────────────────────────────────────────────── -->
+  <PropertyGroup>
+    <!-- Ref is in the path, so a ref bump is a cache miss and an unchanged ref
+         reuses the downloaded spec - no custom comparison needed. -->
+    <OpenApiCacheDir>$(BaseIntermediateOutputPath)openapi/$(BraintrustOpenApiRef)/</OpenApiCacheDir>
+    <OpenApiRawSpecFile>$(OpenApiCacheDir)spec.raw.yaml</OpenApiRawSpecFile>
+    <OpenApiSpecFile>$(OpenApiCacheDir)spec.yaml</OpenApiSpecFile>
+    <GeneratedDir>$(BaseIntermediateOutputPath)generated/</GeneratedDir>
+    <GeneratedClientFile>$(GeneratedDir)BraintrustGeneratedApiClient.cs</GeneratedClientFile>
+    <GeneratedUnionShellsFile>$(GeneratedDir)UnionShells.g.cs</GeneratedUnionShellsFile>
+    <SpecNormalizerSource>$(MSBuildProjectDirectory)/build/SpecNormalizer.cs</SpecNormalizerSource>
+    <NSwagTemplateDir>$(MSBuildProjectDirectory)/build/templates</NSwagTemplateDir>
+  </PropertyGroup>
+
+  <!-- Spec development: the local spec is an input, so editing it regenerates. Without
+       this the ref-in-path cache never invalidates (the pinned ref has not changed) and
+       the build keeps compiling a stale client until obj is cleaned. Empty when the
+       override is unset, which MSBuild skips. -->
+  <PropertyGroup Condition="'$(BRAINTRUST_OPENAPI_ROOT)' != ''">
+    <LocalOpenApiSpecFile>$(BRAINTRUST_OPENAPI_ROOT)/openapi/spec.yaml</LocalOpenApiSpecFile>
+  </PropertyGroup>
+
+  <!-- ── Spec normalization ───────────────────────────────────────────────────
+       An inline C# task whose body lives in build/SpecNormalizer.cs. Every rule
+       there matches on schema *shape*, never on schema name, so new unions in the
+       spec are handled without editing the normalizer. See that file's header for
+       the rule list. -->
+  <UsingTask TaskName="Braintrust.Build.SpecNormalizer"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <InputPath ParameterType="System.String" Required="true" />
+      <OutputPath ParameterType="System.String" Required="true" />
+      <UnionShellsPath ParameterType="System.String" Required="true" />
+      <Namespace ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <!-- Forward slashes: backslashes break the reference on macOS/Linux. -->
+      <Reference Include="$(PkgYamlDotNet)/lib/netstandard2.0/YamlDotNet.dll" />
+      <Code Type="Class" Language="cs" Source="$(SpecNormalizerSource)" />
+    </Task>
+  </UsingTask>
+
+  <!-- ── Fetch + normalize spec (incremental on the ref-in-path) ───────────── -->
+  <Target Name="FetchOpenApiSpec"
+          Inputs="$(MSBuildProjectFullPath);$(SpecNormalizerSource);$(LocalOpenApiSpecFile)"
+          Outputs="$(OpenApiSpecFile);$(GeneratedUnionShellsFile)">
+    <!-- Local checkout override (spec development). BRAINTRUST_OPENAPI_ROOT is
+         auto-imported from the environment as an MSBuild property. -->
+    <Copy Condition="'$(BRAINTRUST_OPENAPI_ROOT)' != ''"
+          SourceFiles="$(BRAINTRUST_OPENAPI_ROOT)/openapi/spec.yaml"
+          DestinationFiles="$(OpenApiRawSpecFile)" />
+    <DownloadFile Condition="'$(BRAINTRUST_OPENAPI_ROOT)' == ''"
+                  SourceUrl="https://raw.githubusercontent.com/braintrustdata/braintrust-openapi/$(BraintrustOpenApiRef)/openapi/spec.yaml"
+                  DestinationFolder="$(OpenApiCacheDir)"
+                  DestinationFileName="spec.raw.yaml"
+                  Retries="3" />
+    <MakeDir Directories="$(GeneratedDir)" />
+    <Braintrust.Build.SpecNormalizer InputPath="$(OpenApiRawSpecFile)"
+                                     OutputPath="$(OpenApiSpecFile)"
+                                     UnionShellsPath="$(GeneratedUnionShellsFile)"
+                                     Namespace="$(RootNamespace)" />
+  </Target>
+
+  <!-- ── Generate client (incremental on the spec + templates) ─────────────────
+       jsonPolymorphicSerializationStyle stays on NJsonSchema (the default): the
+       System.Text.Json style emits [JsonPolymorphic], and System.Text.Json throws
+       on a discriminator value the build does not know, with no way to override it
+       (UnknownDerivedTypeHandling governs serialization only). The NJsonSchema
+       converter is patchable, and build/templates/PATCHES.md documents the three
+       patches that make it round-trip correctly and tolerate unknown variants. -->
+  <Target Name="GenerateOpenApiClient"
+          DependsOnTargets="FetchOpenApiSpec"
+          BeforeTargets="BeforeCompile;CoreCompile"
+          Inputs="$(OpenApiSpecFile);$(NSwagTemplateDir)/JsonInheritanceConverter.liquid"
+          Outputs="$(GeneratedClientFile)">
+    <MakeDir Directories="$(GeneratedDir)" />
+    <Exec Command="$(NSwagExe_Net80) openapi2csclient /input:&quot;$(OpenApiSpecFile)&quot; /output:&quot;$(GeneratedClientFile)&quot; /namespace:$(RootNamespace) /jsonLibrary:SystemTextJson /className:BraintrustGeneratedApiClient /generateClientInterfaces:true /templateDirectory:&quot;$(NSwagTemplateDir)&quot;" />
+  </Target>
+
+  <!-- Add the generated source to the compile set (after it exists). -->
+  <Target Name="IncludeGeneratedSources"
+          DependsOnTargets="GenerateOpenApiClient"
+          BeforeTargets="BeforeCompile;CoreCompile">
+    <ItemGroup>
+      <Compile Include="$(GeneratedClientFile)" />
+      <Compile Include="$(GeneratedUnionShellsFile)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

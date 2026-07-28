@@ -1,0 +1,342 @@
+{%- if UseSystemTextJsonPolymorphicSerialization == false -%}
+[System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "{{ ToolchainVersion }}")]
+{%- if UseSystemTextJson -%}
+internal class JsonInheritanceConverterAttribute : System.Text.Json.Serialization.JsonConverterAttribute
+{
+    public string DiscriminatorName { get; }
+
+    public JsonInheritanceConverterAttribute(System.Type baseType, string discriminatorName = "discriminator")
+        : base(typeof(JsonInheritanceConverter<>).MakeGenericType(baseType))
+    {
+        DiscriminatorName = discriminatorName;
+    }
+}
+
+public class JsonInheritanceConverter<TBase> : System.Text.Json.Serialization.JsonConverter<TBase>
+{
+    private readonly string _discriminatorName;
+
+    public JsonInheritanceConverter()
+    {
+        var attribute = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<JsonInheritanceConverterAttribute>(typeof(TBase));
+        _discriminatorName = attribute?.DiscriminatorName ?? "discriminator";
+    }
+
+    public JsonInheritanceConverter(string discriminatorName)
+    {
+        _discriminatorName = discriminatorName;
+    }
+
+    public string DiscriminatorName { get { return _discriminatorName; } }
+
+    public override TBase Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options)
+    {
+        var document = System.Text.Json.JsonDocument.ParseValue(ref reader);
+        var hasDiscriminator = document.RootElement.TryGetProperty(_discriminatorName, out var discriminator);
+        var subtype = GetDiscriminatorType(document.RootElement, typeToConvert, hasDiscriminator ? discriminator.GetString() : null);
+
+        // BRAINTRUST PATCH: an unknown discriminator resolves to the base type itself.
+        // Deserializing that would re-enter this converter and recurse forever, so
+        // materialise the base directly. Bases emitted by the spec normalizer declare
+        // no members of their own beyond extension data, so nothing is lost.
+        if (subtype == typeToConvert)
+        {
+            return ReadAsBase(document.RootElement, typeToConvert, options);
+        }
+
+        var bufferWriter = new System.IO.MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(bufferWriter))
+        {
+            document.RootElement.WriteTo(writer);
+        }
+
+        return (TBase)System.Text.Json.JsonSerializer.Deserialize(bufferWriter.ToArray(), subtype, options);
+    }
+
+    // BRAINTRUST PATCH: see above.
+    private static TBase ReadAsBase(System.Text.Json.JsonElement element, System.Type objectType, System.Text.Json.JsonSerializerOptions options)
+    {
+        var instance = (TBase)System.Activator.CreateInstance(objectType);
+        if (element.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return instance;
+        }
+
+        foreach (var property in objectType.GetProperties())
+        {
+            if (System.Reflection.CustomAttributeExtensions
+                    .GetCustomAttribute<System.Text.Json.Serialization.JsonExtensionDataAttribute>(property) == null)
+            {
+                continue;
+            }
+
+            var bag = new System.Collections.Generic.Dictionary<string, object>();
+            foreach (var item in element.EnumerateObject())
+            {
+                bag[item.Name] = System.Text.Json.JsonSerializer.Deserialize<object>(item.Value.GetRawText(), options);
+            }
+
+            property.SetValue(instance, bag);
+            break;
+        }
+
+        return instance;
+    }
+
+    public override void Write(System.Text.Json.Utf8JsonWriter writer, TBase value, System.Text.Json.JsonSerializerOptions options)
+    {
+        if (value != null)
+        {
+            // BRAINTRUST PATCH: an unknown variant was materialised as the base itself
+            // (see Read). Handing that to JsonSerializer resolves this very converter
+            // again and recurses until the stack overflows, and its real discriminator
+            // sits in [JsonExtensionData] rather than in an attribute - so replay it as
+            // it arrived instead of stamping the base's type name over the server's value.
+            if (GetSubtypeDiscriminator(value.GetType()) == null)
+            {
+                WriteAsBase(writer, value, options);
+                return;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString(_discriminatorName, GetDiscriminatorValue(value.GetType()));
+
+            var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes((object)value, options);
+            var document = System.Text.Json.JsonDocument.Parse(bytes);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                // BRAINTRUST PATCH: the discriminator is written explicitly above; a
+                // round-tripped instance also carries it in [JsonExtensionData], and
+                // writing it again would emit a duplicate JSON key.
+                if (property.NameEquals(_discriminatorName))
+                {
+                    continue;
+                }
+                property.WriteTo(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
+    }
+
+    // BRAINTRUST PATCH: see above. Bases emitted by the spec normalizer declare nothing
+    // but extension data, which ReadAsBase filled from the payload - discriminator
+    // included - so replaying it round-trips an unknown variant untouched.
+    private static void WriteAsBase(System.Text.Json.Utf8JsonWriter writer, TBase value, System.Text.Json.JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+
+        foreach (var property in value.GetType().GetProperties())
+        {
+            if (System.Reflection.CustomAttributeExtensions
+                    .GetCustomAttribute<System.Text.Json.Serialization.JsonExtensionDataAttribute>(property) == null)
+            {
+                continue;
+            }
+
+            var bag = property.GetValue(value) as System.Collections.Generic.IDictionary<string, object>;
+            if (bag != null)
+            {
+                foreach (var item in bag)
+                {
+                    writer.WritePropertyName(item.Key);
+                    System.Text.Json.JsonSerializer.Serialize(writer, item.Value, options);
+                }
+            }
+
+            break;
+        }
+
+        writer.WriteEndObject();
+    }
+
+    public string GetDiscriminatorValue(System.Type type)
+    {
+        var jsonInheritanceAttributeDiscriminator = GetSubtypeDiscriminator(type);
+        if (jsonInheritanceAttributeDiscriminator != null)
+        {
+            return jsonInheritanceAttributeDiscriminator;
+        }
+
+        return type.Name;
+    }
+
+    protected System.Type GetDiscriminatorType(System.Text.Json.JsonElement jObject, System.Type objectType, string discriminatorValue)
+    {
+        if (discriminatorValue != null)
+        {
+            var jsonInheritanceAttributeSubtype = GetObjectSubtype(objectType, discriminatorValue);
+            if (jsonInheritanceAttributeSubtype != null)
+            {
+                return jsonInheritanceAttributeSubtype;
+            }
+
+            if (objectType.Name == discriminatorValue)
+            {
+                return objectType;
+            }
+
+            var typeName = objectType.Namespace + "." + discriminatorValue;
+            var subtype = System.Reflection.IntrospectionExtensions.GetTypeInfo(objectType).Assembly.GetType(typeName);
+            if (subtype != null)
+            {
+                return subtype;
+            }
+        }
+
+        // BRAINTRUST PATCH: upstream throws here. A discriminator value this build has
+        // never seen is normal against a live API, and one unknown variant in a listing
+        // page must not fail the whole response - fall back to the base type, where the
+        // payload stays readable through AdditionalProperties.
+        return objectType;
+    }
+
+    private System.Type GetObjectSubtype(System.Type baseType, string discriminatorValue)
+    {
+        foreach (var attribute in System.Reflection.CustomAttributeExtensions.GetCustomAttributes<JsonInheritanceAttribute>(System.Reflection.IntrospectionExtensions.GetTypeInfo(baseType), true))
+        {
+            if (attribute.Key == discriminatorValue)
+                return attribute.Type;
+        }
+
+        return null;
+    }
+
+    private string GetSubtypeDiscriminator(System.Type objectType)
+    {
+        foreach (var attribute in System.Reflection.CustomAttributeExtensions.GetCustomAttributes<JsonInheritanceAttribute>(System.Reflection.IntrospectionExtensions.GetTypeInfo(objectType), true))
+        {
+            if (attribute.Type == objectType)
+                return attribute.Key;
+        }
+
+        return null;
+    }
+}
+{%- else -%}
+public class JsonInheritanceConverter : Newtonsoft.Json.JsonConverter
+{
+    internal static readonly string DefaultDiscriminatorName = "discriminator";
+
+    private readonly string _discriminatorName;
+
+    [System.ThreadStatic]
+    private static bool _isReading;
+
+    [System.ThreadStatic]
+    private static bool _isWriting;
+
+    public JsonInheritanceConverter()
+    {
+        _discriminatorName = DefaultDiscriminatorName;
+    }
+
+    public JsonInheritanceConverter(string discriminatorName)
+    {
+        _discriminatorName = discriminatorName;
+    }
+
+    public string DiscriminatorName { get { return _discriminatorName; } }
+
+    public override void WriteJson(Newtonsoft.Json.JsonWriter writer, object value, Newtonsoft.Json.JsonSerializer serializer)
+    {
+        try
+        {
+            _isWriting = true;
+
+            var jObject = Newtonsoft.Json.Linq.JObject.FromObject(value, serializer);
+            jObject.AddFirst(new Newtonsoft.Json.Linq.JProperty(_discriminatorName, GetSubtypeDiscriminator(value.GetType())));
+            writer.WriteToken(jObject.CreateReader());
+        }
+        finally
+        {
+            _isWriting = false;
+        }
+    }
+
+    public override bool CanWrite
+    {
+        get
+        {
+            if (_isWriting)
+            {
+                _isWriting = false;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    public override bool CanRead
+    {
+        get
+        {
+            if (_isReading)
+            {
+                _isReading = false;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    public override bool CanConvert(System.Type objectType)
+    {
+        return true;
+    }
+
+    public override object ReadJson(Newtonsoft.Json.JsonReader reader, System.Type objectType, object existingValue, Newtonsoft.Json.JsonSerializer serializer)
+    {
+        var jObject = serializer.Deserialize<Newtonsoft.Json.Linq.JObject>(reader);
+        if (jObject == null)
+            return null;
+
+        var discriminatorValue = jObject.GetValue(_discriminatorName);
+        var discriminator = discriminatorValue != null ? Newtonsoft.Json.Linq.Extensions.Value<string>(discriminatorValue) : null;
+        var subtype = GetObjectSubtype(objectType, discriminator);
+
+        var objectContract = serializer.ContractResolver.ResolveContract(subtype) as Newtonsoft.Json.Serialization.JsonObjectContract;
+        if (objectContract == null || System.Linq.Enumerable.All(objectContract.Properties, p => p.PropertyName != _discriminatorName))
+        {
+            jObject.Remove(_discriminatorName);
+        }
+
+        try
+        {
+            _isReading = true;
+            return serializer.Deserialize(jObject.CreateReader(), subtype);
+        }
+        finally
+        {
+            _isReading = false;
+        }
+    }
+
+    private System.Type GetObjectSubtype(System.Type objectType, string discriminator)
+    {
+        foreach (var attribute in System.Reflection.CustomAttributeExtensions.GetCustomAttributes<JsonInheritanceAttribute>(System.Reflection.IntrospectionExtensions.GetTypeInfo(objectType), true))
+        {
+            if (attribute.Key == discriminator)
+                return attribute.Type;
+        }
+
+        return objectType;
+    }
+
+    private string GetSubtypeDiscriminator(System.Type objectType)
+    {
+        foreach (var attribute in System.Reflection.CustomAttributeExtensions.GetCustomAttributes<JsonInheritanceAttribute>(System.Reflection.IntrospectionExtensions.GetTypeInfo(objectType), true))
+        {
+            if (attribute.Type == objectType)
+                return attribute.Key;
+        }
+
+        return objectType.Name;
+    }
+}
+{%- endif -%}
+{%- endif -%}

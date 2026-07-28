@@ -7,8 +7,16 @@ using Braintrust.Sdk.Config;
 namespace Braintrust.Sdk.Api;
 
 /// <summary>
-/// Implementation of Braintrust API client.
+/// Hand-rolled implementation of the Braintrust API client.
 /// </summary>
+/// <remarks>
+/// Superseded by <see cref="DefaultBraintrustApiClient"/>, which is backed by the client
+/// generated from the Braintrust OpenAPI spec and so stays in step with the API rather
+/// than needing each endpoint written out by hand. This type is kept only so existing
+/// callers keep compiling; it receives no new endpoints and will be removed.
+/// </remarks>
+[Obsolete("Use DefaultBraintrustApiClient, which is backed by the generated OpenAPI client. " +
+          "This hand-rolled client is no longer maintained and will be removed in a future release.")]
 public class BraintrustApiClient : IBraintrustApiClient, IDisposable
 {
     private readonly BraintrustConfig _config;

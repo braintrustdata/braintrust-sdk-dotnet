@@ -4,6 +4,10 @@ using System.Text.Json;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 
+// BraintrustApiClient is deprecated in favour of DefaultBraintrustApiClient, but it is
+// still shipped, so it stays under test until it is removed.
+#pragma warning disable CS0618
+
 namespace Braintrust.Sdk.Tests.Api;
 
 [Collection("BraintrustGlobals")]

@@ -84,7 +84,7 @@ public sealed class Braintrust
     /// </summary>
     public static Braintrust Of(BraintrustConfig config, bool autoManageOpenTelemetry = true)
     {
-        var apiClient = BraintrustApiClient.Of(config);
+        var apiClient = DefaultBraintrustApiClient.Of(config);
         return new Braintrust(config, apiClient, autoManageOpenTelemetry);
     }
 

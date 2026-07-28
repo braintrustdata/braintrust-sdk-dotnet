@@ -19,6 +19,41 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <!-- ── Generated API client ──────────────────────────────────────────────────
+       The generated client is an implementation detail, not a published package -
+       the same call sdk-java makes, where braintrust-api is `embed`ed into the
+       published jar rather than released on its own.
+
+       PrivateAssets="all" keeps it out of the package's dependency list; the target
+       below copies its assembly into the package instead, so consumers get it without
+       a separate NuGet reference. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Braintrust.Sdk.Api.Generated\Braintrust.Sdk.Api.Generated.csproj"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeGeneratedApiClientInPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <!-- Take the assembly from the build output rather than from the reference graph.
+       The ProjectReference already copies it next to Braintrust.Sdk.dll, so the file is
+       present both for a normal pack and for the no-build pack the release workflow
+       runs. Resolving it through ResolveReferences instead would try to build the
+       referenced project, which fails with NETSDK1085 once NoBuild is set. -->
+  <Target Name="IncludeGeneratedApiClientInPackage">
+    <PropertyGroup>
+      <GeneratedApiClientAssembly>$(TargetDir)Braintrust.Sdk.Api.Generated.dll</GeneratedApiClientAssembly>
+    </PropertyGroup>
+
+    <Error Condition="!Exists('$(GeneratedApiClientAssembly)')"
+           Text="Expected the generated API client at '$(GeneratedApiClientAssembly)'. Braintrust.Sdk would ship without it and fail at runtime." />
+
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(GeneratedApiClientAssembly)" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="OpenTelemetry" Version="1.15.3" />
     <PackageReference Include="OpenTelemetry.Api" Version="1.15.3" />
