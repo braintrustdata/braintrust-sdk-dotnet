@@ -1,3 +1,5 @@
+[![Braintrust](./braintrust-logo.svg)](https://www.braintrust.dev/)
+
 # Braintrust C# Tracing & Eval SDK
 
 [![CI](https://github.com/braintrustdata/braintrust-sdk-java/actions/workflows/ci.yml/badge.svg)](https://github.com/braintrustdata/braintrust-sdk-dotnet/actions/workflows/ci.yml)
