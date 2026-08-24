@@ -59,7 +59,10 @@
     <PackageReference Include="OpenTelemetry.Api" Version="1.15.3" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
-    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <!-- 9.x, not 8.x: the generated client's string enums are annotated with
+         [JsonStringEnumMemberName], which System.Text.Json only honours from 9.0. Keep in
+         step with the reference in Braintrust.Sdk.Api.Generated. -->
+    <PackageReference Include="System.Text.Json" Version="9.0.19" />
   </ItemGroup>
 
 </Project>

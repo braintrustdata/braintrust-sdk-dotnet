@@ -63,6 +63,25 @@ public sealed class DefaultBraintrustApiClient : IBraintrustApiClient, IDisposab
         };
     }
 
+    /// <summary>
+    /// The generated OpenAPI client, wired up with this instance's base URL, API key and
+    /// timeout. Use it for the Braintrust REST endpoints this SDK does not wrap - see
+    /// <c>docs/api-client.md</c>.
+    /// </summary>
+    /// <remarks>
+    /// This is raw generated code, so it is shaped by the spec rather than by the SDK:
+    /// property names are spec-cased (<c>Org_id</c>), identifiers are <see cref="Guid"/>,
+    /// list endpoints take their filters as positional arguments, and failures surface as
+    /// <see cref="Generated.ApiException"/> rather than <see cref="ApiException"/>. It also
+    /// tracks whatever spec ref the build pinned, so it is not covered by the SDK's own
+    /// compatibility promises. Prefer the methods on <see cref="IBraintrustApiClient"/>
+    /// where they cover what you need.
+    ///
+    /// The returned client shares this instance's <see cref="HttpClient"/>, so it stops
+    /// working once this instance is disposed.
+    /// </remarks>
+    public Generated.IBraintrustGeneratedApiClient Api => _api;
+
     public async Task<Project> GetOrCreateProject(string projectName)
     {
         // POST /v1/project upserts by name.

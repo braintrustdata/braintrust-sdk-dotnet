@@ -3,6 +3,7 @@ using System.Text;
 using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Git;
+using Generated = Braintrust.Sdk.Api.Generated;
 
 namespace Braintrust.Sdk.Tests.Api;
 
@@ -254,6 +255,44 @@ public class DefaultBraintrustApiClientTest : IDisposable
         var braintrust = Braintrust.Of(config, autoManageOpenTelemetry: false);
 
         Assert.IsType<DefaultBraintrustApiClient>(braintrust.ApiClient);
+    }
+
+    [Fact]
+    public async Task Api_exposes_the_generated_client_wired_to_this_config()
+    {
+        // The generated client covers endpoints IBraintrustApiClient does not wrap, so it
+        // is public - but it has to inherit this instance's base URL and API key.
+        _handler.Enqueue(HttpStatusCode.OK, $$"""{"objects":[{{ProjectJson}}]}""");
+
+        var page = await _apiClient.Api.GetProjectAsync(
+            limit: 1,
+            starting_after: null,
+            ending_before: null,
+            ids: null,
+            project_name: "test-project",
+            org_name: null);
+
+        var project = Assert.Single(page.Objects);
+        Assert.Equal(Guid.Parse(ProjectId), project.Id);
+
+        Assert.Equal("test-api.example.com", _handler.LastRequest?.RequestUri?.Host);
+        Assert.Equal("/v1/project", _handler.LastRequest?.RequestUri?.AbsolutePath);
+        Assert.Contains("project_name=test-project", _handler.LastRequest?.RequestUri?.Query);
+        Assert.Equal("Bearer test-api-key", _handler.LastRequest?.Headers.Authorization?.ToString());
+    }
+
+    [Fact]
+    public async Task Api_surfaces_failures_as_the_generated_exception()
+    {
+        // Only the wrapper methods translate to Braintrust.Sdk.Api.ApiException; a direct
+        // generated call raises the generated one, and keeps the server's body.
+        _handler.Enqueue(HttpStatusCode.NotFound, "no such project");
+
+        var ex = await Assert.ThrowsAsync<Generated.ApiException>(
+            () => _apiClient.Api.GetProjectIdAsync(Guid.Parse(ProjectId)));
+
+        Assert.Equal(404, ex.StatusCode);
+        Assert.Contains("no such project", ex.Response);
     }
 
     private sealed class StubHandler : HttpMessageHandler

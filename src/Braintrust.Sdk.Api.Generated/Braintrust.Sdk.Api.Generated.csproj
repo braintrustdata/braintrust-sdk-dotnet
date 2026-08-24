@@ -42,6 +42,10 @@
   <ItemGroup>
     <!-- Build-time only: NSwag.MSBuild ships the generator runner; no runtime dep. -->
     <PackageReference Include="NSwag.MSBuild" Version="14.7.1" PrivateAssets="all" />
+    <!-- Runtime dep, and the reason /jsonLibraryVersion:9.0 below is safe: the
+         [JsonStringEnumMemberName] attribute the generator emits for string enums arrived
+         in System.Text.Json 9.0. Keep in step with the reference in Braintrust.Sdk. -->
+    <PackageReference Include="System.Text.Json" Version="9.0.19" />
     <!-- Build-time only: YAML parser for the spec-normalization task below.
          GeneratePathProperty exposes $(PkgYamlDotNet) for the inline-task reference. -->
     <PackageReference Include="YamlDotNet" Version="13.7.1" PrivateAssets="all" GeneratePathProperty="true" />
@@ -117,14 +121,21 @@
        on a discriminator value the build does not know, with no way to override it
        (UnknownDerivedTypeHandling governs serialization only). The NJsonSchema
        converter is patchable, and build/templates/PATCHES.md documents the three
-       patches that make it round-trip correctly and tolerate unknown variants. -->
+       patches that make it round-trip correctly and tolerate unknown variants.
+
+       jsonLibraryVersion:9.0 is not about the target framework - it is the generator's
+       switch for how string enums are annotated. Below 9.0 it emits [EnumMember] alone,
+       which System.Text.Json ignores, so every enum serialized as its C# name
+       (`"Active"` instead of `"active"`) and the API rejected the request. At 9.0 it adds
+       [JsonStringEnumMemberName], which System.Text.Json does honour. That enum attribute
+       is the generator's only 9.0-gated output. -->
   <Target Name="GenerateOpenApiClient"
           DependsOnTargets="FetchOpenApiSpec"
           BeforeTargets="BeforeCompile;CoreCompile"
-          Inputs="$(OpenApiSpecFile);$(NSwagTemplateDir)/JsonInheritanceConverter.liquid"
+          Inputs="$(MSBuildProjectFullPath);$(OpenApiSpecFile);$(NSwagTemplateDir)/JsonInheritanceConverter.liquid"
           Outputs="$(GeneratedClientFile)">
     <MakeDir Directories="$(GeneratedDir)" />
-    <Exec Command="$(NSwagExe_Net80) openapi2csclient /input:&quot;$(OpenApiSpecFile)&quot; /output:&quot;$(GeneratedClientFile)&quot; /namespace:$(RootNamespace) /jsonLibrary:SystemTextJson /className:BraintrustGeneratedApiClient /generateClientInterfaces:true /templateDirectory:&quot;$(NSwagTemplateDir)&quot;" />
+    <Exec Command="$(NSwagExe_Net80) openapi2csclient /input:&quot;$(OpenApiSpecFile)&quot; /output:&quot;$(GeneratedClientFile)&quot; /namespace:$(RootNamespace) /jsonLibrary:SystemTextJson /jsonLibraryVersion:9.0 /className:BraintrustGeneratedApiClient /generateClientInterfaces:true /templateDirectory:&quot;$(NSwagTemplateDir)&quot;" />
   </Target>
 
   <!-- Add the generated source to the compile set (after it exists). -->
