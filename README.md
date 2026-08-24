@@ -54,6 +54,19 @@ dotnet add package Braintrust.Sdk.AgentFramework
 </ItemGroup>
 ```
 
+## Low-level API client
+
+Beyond evals and tracing, the SDK ships a client for the full [Braintrust REST API](https://api.braintrust.dev),
+generated from Braintrust's public OpenAPI spec:
+
+```csharp
+using var client = DefaultBraintrustApiClient.Of(BraintrustConfig.FromEnvironment());
+var api = client.Api;   // every Braintrust REST endpoint
+```
+
+See [docs/api-client.md](./docs/api-client.md) for the walkthrough, and
+[examples/ApiClientExample](./examples/ApiClientExample) for a runnable example.
+
 ## Running Examples
 
 ### Setup

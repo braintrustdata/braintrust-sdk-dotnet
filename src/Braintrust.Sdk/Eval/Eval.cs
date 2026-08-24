@@ -628,7 +628,7 @@ public sealed class Eval<TInput, TOutput>
             _config ??= BraintrustConfig.FromEnvironment();
             _activitySource ??= BraintrustTracing.GetActivitySource();
             _projectId ??= _config.DefaultProjectId;
-            _apiClient ??= BraintrustApiClient.Of(_config);
+            _apiClient ??= DefaultBraintrustApiClient.Of(_config);
             _btqlClient ??= new BtqlClient(_config);
 
             if (_scorers.Count == 0 && _classifiers.Count == 0)

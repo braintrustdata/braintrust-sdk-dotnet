@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -44,6 +44,12 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Braintrust.Sdk.AzureOpenAI.Tests", "tests\Braintrust.Sdk.AzureOpenAI.Tests\Braintrust.Sdk.AzureOpenAI.Tests.csproj", "{E2F3A4B5-6C7D-8E9F-0A1B-2C3D4E5F6A7B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureOpenAIInstrumentation", "examples\AzureOpenAIInstrumentation\AzureOpenAIInstrumentation.csproj", "{F3A4B5C6-7D8E-9F0A-1B2C-3D4E5F6A7B8C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Braintrust.Sdk.Api.Generated", "src\Braintrust.Sdk.Api.Generated\Braintrust.Sdk.Api.Generated.csproj", "{3BD17A37-DC55-474D-BEB1-3770351CE06D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Braintrust.Sdk.Api.Generated.Tests", "tests\Braintrust.Sdk.Api.Generated.Tests\Braintrust.Sdk.Api.Generated.Tests.csproj", "{4AD8F3CD-550F-45E4-AE04-3DF2DB0246C9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApiClientExample", "examples\ApiClientExample\ApiClientExample.csproj", "{C7DD0DBF-E63F-4088-8D4F-65B8003DDF3E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -126,6 +132,18 @@ Global
 		{F3A4B5C6-7D8E-9F0A-1B2C-3D4E5F6A7B8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F3A4B5C6-7D8E-9F0A-1B2C-3D4E5F6A7B8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F3A4B5C6-7D8E-9F0A-1B2C-3D4E5F6A7B8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3BD17A37-DC55-474D-BEB1-3770351CE06D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3BD17A37-DC55-474D-BEB1-3770351CE06D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3BD17A37-DC55-474D-BEB1-3770351CE06D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3BD17A37-DC55-474D-BEB1-3770351CE06D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4AD8F3CD-550F-45E4-AE04-3DF2DB0246C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4AD8F3CD-550F-45E4-AE04-3DF2DB0246C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4AD8F3CD-550F-45E4-AE04-3DF2DB0246C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4AD8F3CD-550F-45E4-AE04-3DF2DB0246C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C7DD0DBF-E63F-4088-8D4F-65B8003DDF3E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7DD0DBF-E63F-4088-8D4F-65B8003DDF3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7DD0DBF-E63F-4088-8D4F-65B8003DDF3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7DD0DBF-E63F-4088-8D4F-65B8003DDF3E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{619E93FE-845C-495A-A633-F6915721957C} = {6530DEC3-1D19-4854-80AC-2D6D02BEAECC}
@@ -146,5 +164,8 @@ Global
 		{D1E2F3A4-5B6C-7D8E-9F0A-1B2C3D4E5F6A} = {6530DEC3-1D19-4854-80AC-2D6D02BEAECC}
 		{E2F3A4B5-6C7D-8E9F-0A1B-2C3D4E5F6A7B} = {638AA92E-E6F9-4619-846C-6E12610D5AAE}
 		{F3A4B5C6-7D8E-9F0A-1B2C-3D4E5F6A7B8C} = {A1BDA853-65BE-4CC8-8070-CCBA22069A7A}
+		{3BD17A37-DC55-474D-BEB1-3770351CE06D} = {6530DEC3-1D19-4854-80AC-2D6D02BEAECC}
+		{4AD8F3CD-550F-45E4-AE04-3DF2DB0246C9} = {638AA92E-E6F9-4619-846C-6E12610D5AAE}
+		{C7DD0DBF-E63F-4088-8D4F-65B8003DDF3E} = {A1BDA853-65BE-4CC8-8070-CCBA22069A7A}
 	EndGlobalSection
 EndGlobal

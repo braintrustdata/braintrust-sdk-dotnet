@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Braintrust.Sdk\Braintrust.Sdk.csproj" />
+
+    <!-- Only needed inside this repo. Braintrust.Sdk references the generated client with
+         PrivateAssets="all" so it stays out of the published package's dependency list, and
+         that also stops the reference flowing to sibling projects at compile time. Apps that
+         install the NuGet package need just Braintrust.Sdk: the generated assembly ships
+         inside it, in lib/, so its types are visible without a second reference. -->
+    <ProjectReference Include="..\..\src\Braintrust.Sdk.Api.Generated\Braintrust.Sdk.Api.Generated.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -23,12 +23,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Braintrust.Sdk\Braintrust.Sdk.csproj" />
-
-    <!-- Braintrust.Sdk references the generated client with PrivateAssets="all", which also
-         stops it flowing to referencing projects at compile time, so name it directly to
-         cover the DefaultBraintrustApiClient.Api surface. Consumers of the NuGet package
-         need no equivalent: the assembly ships inside it, in lib/. -->
     <ProjectReference Include="..\..\src\Braintrust.Sdk.Api.Generated\Braintrust.Sdk.Api.Generated.csproj" />
   </ItemGroup>
 
