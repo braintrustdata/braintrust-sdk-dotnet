@@ -31,7 +31,8 @@ class Program
             if (rootActivity != null)
             {
                 await ChatCompletionsExample(instrumentedClient);
-                var url = await braintrust.GetProjectUriAsync()
+                var projectUri = await braintrust.GetProjectUriAsync();
+                var url = projectUri.AbsoluteUri
                     + $"/logs?r={rootActivity.TraceId}&s={rootActivity.SpanId}";
                 Console.WriteLine($"\n\n  Example complete! View your data in Braintrust: {url}\n");
             }

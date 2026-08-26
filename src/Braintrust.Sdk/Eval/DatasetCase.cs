@@ -50,6 +50,12 @@ public record DatasetCase<TInput, TOutput>
     public required IReadOnlyList<string> Tags { get; init; }
     public required IReadOnlyDictionary<string, object> Metadata { get; init; }
 
+    /// <summary>
+    /// Where this case was read from, when it came from a Braintrust dataset. Null for
+    /// in-memory cases.
+    /// </summary>
+    public Origin? Origin { get; init; }
+
     [SetsRequiredMembers]
     public DatasetCase(
         TInput input,

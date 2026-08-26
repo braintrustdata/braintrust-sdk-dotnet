@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
+using System.Threading.Channels;
 using Braintrust.Sdk.Api;
-using Braintrust.Sdk.Api.Internal;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Git;
 using Braintrust.Sdk.Trace;
+using Generated = Braintrust.Sdk.Api.Generated;
 
 namespace Braintrust.Sdk.Eval;
 
@@ -13,7 +15,7 @@ namespace Braintrust.Sdk.Eval;
 /// </summary>
 /// <typeparam name="TInput">The type of input data for the evaluation</typeparam>
 /// <typeparam name="TOutput">The type of output produced by the task</typeparam>
-public sealed class Eval<TInput, TOutput>
+public sealed class Eval<TInput, TOutput> : IDisposable
     where TInput : notnull
     where TOutput : notnull
 {
@@ -24,10 +26,9 @@ public sealed class Eval<TInput, TOutput>
     };
 
     private readonly string _experimentName;
-    private readonly BraintrustConfig _config;
-    private readonly IBraintrustApiClient _client;
-    private readonly IBtqlClient _btqlClient;
-    private readonly OrganizationAndProjectInfo _orgAndProject;
+    private readonly BraintrustOpenApiClient _apiClient;
+    private readonly Generated.Project _project;
+    private readonly Generated.Organization _organization;
     private readonly ActivitySource _activitySource;
     private readonly IDataset<TInput, TOutput> _dataset;
     private readonly ITask<TInput, TOutput> _task;
@@ -38,13 +39,21 @@ public sealed class Eval<TInput, TOutput>
     private readonly int? _maxConcurrency;
     private readonly RepoInfo? _repoInfo;
 
-    private Eval(Builder builder, OrganizationAndProjectInfo orgAndProject, RepoInfo? repoInfo)
+    /// <summary>The client this eval created, or null when the caller owns it.</summary>
+    private readonly BraintrustOpenApiClient? _ownedApiClient;
+
+    private Eval(
+        Builder builder,
+        BraintrustOpenApiClient apiClient,
+        Generated.Project project,
+        Generated.Organization organization,
+        RepoInfo? repoInfo,
+        BraintrustOpenApiClient? ownedApiClient)
     {
         _experimentName = builder._experimentName;
-        _config = builder._config ?? throw new ArgumentNullException(nameof(builder._config));
-        _client = builder._apiClient ?? throw new ArgumentNullException(nameof(builder._apiClient));
-        _btqlClient = builder._btqlClient ?? throw new ArgumentNullException(nameof(builder._btqlClient));
-        _orgAndProject = orgAndProject ?? throw new ArgumentNullException(nameof(orgAndProject));
+        _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
+        _project = project ?? throw new ArgumentNullException(nameof(project));
+        _organization = organization ?? throw new ArgumentNullException(nameof(organization));
 
         _activitySource = builder._activitySource ?? throw new ArgumentNullException(nameof(builder._activitySource));
         _dataset = builder._dataset ?? throw new ArgumentNullException(nameof(builder._dataset));
@@ -55,6 +64,16 @@ public sealed class Eval<TInput, TOutput>
         _experimentMetadata = builder._experimentMetadata;
         _maxConcurrency = builder._maxConcurrency;
         _repoInfo = repoInfo;
+        _ownedApiClient = ownedApiClient;
+    }
+
+    /// <summary>
+    /// Disposes the http clients this eval created for itself. Clients passed to the builder are
+    /// left alone.
+    /// </summary>
+    public void Dispose()
+    {
+        _ownedApiClient?.Dispose();
     }
 
     /// <summary>
@@ -62,50 +81,213 @@ public sealed class Eval<TInput, TOutput>
     /// </summary>
     public async Task<EvalResult> RunAsync()
     {
-        var experiment = await _client.GetOrCreateExperiment(
-            new CreateExperimentRequest(
-                _orgAndProject.Project.Id,
-                _experimentName,
-                RepoInfo: _repoInfo,
-                Tags: _experimentTags,
-                Metadata: _experimentMetadata))
-            .ConfigureAwait(false);
+        IAsyncEnumerable<DatasetCase<TInput, TOutput>> cases;
+        string? datasetVersion = null;
 
-        var experimentId = experiment.Id;
-
-        var cases = new List<DatasetCase<TInput, TOutput>>();
-        await foreach (var datasetCase in _dataset.GetCasesAsync())
+        var isRemote = _dataset is DatasetBrainstoreImpl<TInput, TOutput>;
+        if (_dataset is DatasetBrainstoreImpl<TInput, TOutput> remoteDataset)
         {
-            cases.Add(datasetCase);
+            var snapshot = await remoteDataset.OpenSnapshotAsync().ConfigureAwait(false);
+            cases = snapshot.Cases;
+            datasetVersion = snapshot.Version;
         }
+        else
+        {
+            cases = _dataset.GetCasesAsync();
+        }
+
+        // Only Braintrust datasets have an id the API will accept; the in-memory id is a
+        // local placeholder.
+
+        // POST /v1/experiment upserts by name within the project.
+        var body = new Generated.CreateExperiment
+        {
+            Project_id = _project.Id,
+            Name = _experimentName,
+            Repo_info = ToGeneratedRepoInfo(_repoInfo),
+            Tags = _experimentTags?.ToList(),
+            Metadata = _experimentMetadata?.ToDictionary(kv => kv.Key, kv => kv.Value),
+        };
+
+        if (isRemote)
+        {
+            body.Dataset_id = Guid.Parse(_dataset.Id);
+            body.Dataset_version = datasetVersion;
+        }
+
+        var experiment = await _apiClient.Api.PostExperimentAsync(body).ConfigureAwait(false);
+
+        var experimentId = experiment.Id.ToString();
 
         // Run cases in parallel
         if (_maxConcurrency.HasValue)
         {
-            using var semaphore = new SemaphoreSlim(_maxConcurrency.Value);
-            var tasks = cases.Select(async datasetCase =>
+            await RunCasesWithBoundedConcurrency(
+                experimentId,
+                cases,
+                _maxConcurrency.Value).ConfigureAwait(false);
+        }
+        else
+        {
+            await RunCasesWithUnlimitedConcurrency(experimentId, cases).ConfigureAwait(false);
+        }
+
+        var experimentUrl = _apiClient
+            .BuildExperimentUri(_organization, _project, experiment.Name ?? _experimentName)
+            .AbsoluteUri;
+        return new EvalResult(experimentUrl);
+    }
+
+    private async Task RunCasesWithBoundedConcurrency(
+        string experimentId,
+        IAsyncEnumerable<DatasetCase<TInput, TOutput>> cases,
+        int maxConcurrency)
+    {
+        var queue = Channel.CreateBounded<DatasetCase<TInput, TOutput>>(
+            new BoundedChannelOptions(maxConcurrency)
             {
-                await semaphore.WaitAsync().ConfigureAwait(false);
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.Wait,
+            });
+        using var stop = new CancellationTokenSource();
+
+        async Task ProduceAsync()
+        {
+            try
+            {
+                await using var enumerator = cases
+                    .WithCancellation(stop.Token)
+                    .ConfigureAwait(false)
+                    .GetAsyncEnumerator();
+
+                // Wait for queue capacity before advancing the dataset cursor. This prevents
+                // fetching another page while both the workers and queue are full.
+                while (await queue.Writer.WaitToWriteAsync(stop.Token).ConfigureAwait(false)
+                    && await enumerator.MoveNextAsync())
+                {
+                    if (!queue.Writer.TryWrite(enumerator.Current))
+                    {
+                        await queue.Writer.WriteAsync(enumerator.Current, stop.Token).ConfigureAwait(false);
+                    }
+                }
+
+                queue.Writer.TryComplete();
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
+            {
+                queue.Writer.TryComplete();
+            }
+            catch (Exception ex)
+            {
+                stop.Cancel();
+                queue.Writer.TryComplete(ex);
+                throw;
+            }
+        }
+
+        async Task ConsumeAsync()
+        {
+            while (await queue.Reader.WaitToReadAsync().ConfigureAwait(false))
+            {
+                if (stop.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (!queue.Reader.TryRead(out var datasetCase))
+                {
+                    continue;
+                }
+
                 try
                 {
                     await EvalOne(experimentId, datasetCase).ConfigureAwait(false);
                 }
-                finally
+                catch
                 {
-                    semaphore.Release();
+                    // Stop dataset enumeration immediately. Other workers still finish and are
+                    // observed before the failure is propagated by WhenAll below.
+                    stop.Cancel();
+                    throw;
                 }
-            });
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-        }
-        else
-        {
-            // Unlimited parallelism
-            var tasks = cases.Select(datasetCase => EvalOne(experimentId, datasetCase));
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
         }
 
-        var experimentUrl = CreateExperimentUrl(_config.AppUrl, _orgAndProject, _experimentName);
-        return new EvalResult(experimentUrl);
+        var producer = ProduceAsync();
+        var workers = Enumerable.Range(0, maxConcurrency)
+            .Select(_ => ConsumeAsync())
+            .ToArray();
+
+        try
+        {
+            await Task.WhenAll(workers.Prepend(producer)).ConfigureAwait(false);
+        }
+        finally
+        {
+            stop.Cancel();
+        }
+    }
+
+    private async Task RunCasesWithUnlimitedConcurrency(
+        string experimentId,
+        IAsyncEnumerable<DatasetCase<TInput, TOutput>> cases)
+    {
+        var tasks = new List<Task>();
+        Exception? enumerationException = null;
+        Exception? caseException = null;
+        using var stop = new CancellationTokenSource();
+
+        async Task RunCaseAsync(DatasetCase<TInput, TOutput> datasetCase)
+        {
+            try
+            {
+                await EvalOne(experimentId, datasetCase).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Interlocked.CompareExchange(ref caseException, ex, null);
+                stop.Cancel();
+                throw;
+            }
+        }
+
+        try
+        {
+            await foreach (var datasetCase in cases
+                .WithCancellation(stop.Token)
+                .ConfigureAwait(false))
+            {
+                if (stop.IsCancellationRequested)
+                {
+                    break;
+                }
+                tasks.Add(RunCaseAsync(datasetCase));
+            }
+        }
+        catch (OperationCanceledException) when (
+            stop.IsCancellationRequested && Volatile.Read(ref caseException) != null)
+        {
+            // A case failed and canceled dataset production.
+        }
+        catch (Exception ex)
+        {
+            enumerationException = ex;
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch when (enumerationException != null)
+        {
+            // All case tasks have been observed. Prefer the dataset failure that stopped
+            // enumeration over a concurrent case failure.
+        }
+
+        if (enumerationException != null)
+        {
+            ExceptionDispatchInfo.Capture(enumerationException).Throw();
+        }
     }
 
     private async Task EvalOne(string experimentId, DatasetCase<TInput, TOutput> datasetCase)
@@ -127,6 +309,11 @@ public sealed class Eval<TInput, TOutput>
             rootActivity.SetTag("braintrust.input_json", ToJson(datasetCase.Input));
             rootActivity.SetTag("braintrust.expected_json", ToJson(datasetCase.Expected));
 
+            if (datasetCase.Origin != null)
+            {
+                rootActivity.SetTag("braintrust.origin", ToJson(datasetCase.Origin));
+            }
+
             if (datasetCase.Tags.Count > 0)
             {
                 // Use native string array attribute (not JSON) to match Go/Java SDKs
@@ -143,8 +330,10 @@ public sealed class Eval<TInput, TOutput>
             // Run task
             TaskResult<TInput, TOutput>? taskResult = null;
             Exception? taskException = null;
+            string? taskSpanId;
             {
-                var taskActivity = _activitySource.StartActivity("task");
+                using var taskActivity = _activitySource.StartActivity("task");
+                taskSpanId = taskActivity?.SpanId.ToHexString();
                 taskActivity?.SetTag(BraintrustTracing.ParentKey, $"experiment_id:{experimentId}");
                 taskActivity?.SetTag("braintrust.span_attributes", ToJson(new { type = "task" }));
                 taskActivity?.SetTag("braintrust.input_json", ToJson(datasetCase.Input));
@@ -182,8 +371,12 @@ public sealed class Eval<TInput, TOutput>
                 }
 
                 // Create a lazy trace object backed by BTQL (only queries API when first accessed)
-                var rootSpanId = rootActivity.TraceId.ToHexString();
-                var trace = new EvalTrace(ct => _btqlClient.QuerySpansAsync(experimentId, rootSpanId, ct));
+                var rootTraceId = rootActivity.TraceId.ToHexString();
+                var trace = new EvalTrace(ct => _apiClient.QuerySpansAsync(
+                    experimentId,
+                    rootTraceId,
+                    taskSpanId is null ? [] : [taskSpanId],
+                    ct));
 
                 await RunScorersAndClassifiers(experimentId, rootActivity, taskResult!.Value, trace, datasetCase.Metadata)
                     .ConfigureAwait(false);
@@ -572,23 +765,19 @@ public sealed class Eval<TInput, TOutput>
         return new ActivityEvent("exception", tags: tags);
     }
 
-    private static string CreateExperimentUrl(
-        string appUrl,
-        OrganizationAndProjectInfo orgAndProject,
-        string experimentName)
-    {
-        var baseUri = new Uri(appUrl);
-        var path = string.Join("/",
-            "app",
-            Uri.EscapeDataString(orgAndProject.OrgInfo.Name),
-            "p",
-            Uri.EscapeDataString(orgAndProject.Project.Name),
-            "experiments",
-            Uri.EscapeDataString(experimentName));
-
-        return new UriBuilder(baseUri.Scheme, baseUri.Host, baseUri.Port, "/" + path).Uri.AbsoluteUri;
-    }
-
+    private static Generated.RepoInfo? ToGeneratedRepoInfo(RepoInfo? repoInfo) =>
+        repoInfo is null ? null : new Generated.RepoInfo
+        {
+            Commit = repoInfo.Commit,
+            Branch = repoInfo.Branch,
+            Tag = repoInfo.Tag,
+            Dirty = repoInfo.Dirty,
+            Author_name = repoInfo.AuthorName,
+            Author_email = repoInfo.AuthorEmail,
+            Commit_message = repoInfo.CommitMessage,
+            Commit_time = repoInfo.CommitTime,
+            Git_diff = repoInfo.GitDiff,
+        };
 
     /// <summary>
     /// Creates a new eval builder.
@@ -605,8 +794,8 @@ public sealed class Eval<TInput, TOutput>
     {
         internal string _experimentName = "unnamed-dotnet-eval";
         internal BraintrustConfig? _config;
-        internal IBraintrustApiClient? _apiClient;
-        internal IBtqlClient? _btqlClient;
+        internal BraintrustOpenApiClient? _apiClient;
+
         internal string? _projectId;
         internal ActivitySource? _activitySource;
         internal IDataset<TInput, TOutput>? _dataset;
@@ -628,9 +817,9 @@ public sealed class Eval<TInput, TOutput>
             _config ??= BraintrustConfig.FromEnvironment();
             _activitySource ??= BraintrustTracing.GetActivitySource();
             _projectId ??= _config.DefaultProjectId;
-            _apiClient ??= DefaultBraintrustApiClient.Of(_config);
-            _btqlClient ??= new BtqlClient(_config);
 
+            // Validate before opening any connection, so a misconfigured builder does not leak
+            // an HttpClient on the way out.
             if (_scorers.Count == 0 && _classifiers.Count == 0)
             {
                 throw new InvalidOperationException("Must provide at least one scorer or classifier");
@@ -646,32 +835,44 @@ public sealed class Eval<TInput, TOutput>
                 throw new InvalidOperationException("Must provide a task");
             }
 
-            OrganizationAndProjectInfo? orgAndProject;
-
-            if (_projectId == null)
+            // BraintrustOpenApiClient owns both generated OpenAPI calls and the internal BTQL
+            // calls. Anything created here is handed to the Eval to dispose - and the builder's
+            // own fields stay untouched, so building twice remains safe.
+            var apiClient = _apiClient;
+            BraintrustOpenApiClient? ownedApiClient = null;
+            if (apiClient is null)
             {
-                orgAndProject = await _apiClient.GetProjectAndOrgInfo().ConfigureAwait(false)
-                                 ?? throw new InvalidOperationException("Unable to retrieve project and org info");
-            }
-            else
-            {
-                orgAndProject = await _apiClient.GetProjectAndOrgInfo(_projectId).ConfigureAwait(false)
-                                ?? throw new InvalidOperationException($"Invalid project id: {_projectId}");
+                apiClient = BraintrustOpenApiClient.Of(_config);
+                ownedApiClient = apiClient;
             }
 
-            // Collect git repo info: use explicit value if set, otherwise auto-detect.
-            // This is intentionally non-throwing — if git is unavailable, repoInfo is simply null.
-            RepoInfo? repoInfo;
-            if (_repoInfoExplicitlySet)
+            try
             {
-                repoInfo = _repoInfo;
-            }
-            else
-            {
-                repoInfo = await GitUtil.GetRepoInfoAsync(_gitMetadataSettings).ConfigureAwait(false);
-            }
+                var (project, organization) = await apiClient
+                    .FetchProjectAndOrgAsync(_projectId)
+                    .ConfigureAwait(false);
 
-            return new Eval<TInput, TOutput>(this, orgAndProject, repoInfo);
+                // Collect git repo info: use explicit value if set, otherwise auto-detect.
+                // This is intentionally non-throwing — if git is unavailable, repoInfo is simply null.
+                RepoInfo? repoInfo;
+                if (_repoInfoExplicitlySet)
+                {
+                    repoInfo = _repoInfo;
+                }
+                else
+                {
+                    repoInfo = await GitUtil.GetRepoInfoAsync(_gitMetadataSettings).ConfigureAwait(false);
+                }
+
+                return new Eval<TInput, TOutput>(
+                    this, apiClient, project, organization, repoInfo, ownedApiClient);
+            }
+            catch
+            {
+                // Nothing takes ownership if the build fails, so close what was opened here.
+                ownedApiClient?.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -702,21 +903,11 @@ public sealed class Eval<TInput, TOutput>
         }
 
         /// <summary>
-        /// Set the API client.
+        /// Set the API client to run against.
         /// </summary>
-        public Builder ApiClient(IBraintrustApiClient apiClient)
+        public Builder ApiClient(BraintrustOpenApiClient apiClient)
         {
-            _apiClient = apiClient;
-            return this;
-        }
-
-        /// <summary>
-        /// Set the BTQL client (used to retrieve trace spans for ITracedScorer).
-        /// Primarily useful for testing.
-        /// </summary>
-        internal Builder BtqlClient(IBtqlClient btqlClient)
-        {
-            _btqlClient = btqlClient;
+            _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
             return this;
         }
 

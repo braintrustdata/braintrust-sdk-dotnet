@@ -55,7 +55,7 @@ public class EvalTraceTest
     [Fact]
     public async Task GetThreadAsync_ReturnsEmptyForNoLlmSpans()
     {
-        var span = MockBtqlClient.MakeSpan("task");
+        var span = BtqlTestData.MakeSpan("task");
         var trace = new EvalTrace(_ => Task.FromResult<IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>>(
             [span]));
 

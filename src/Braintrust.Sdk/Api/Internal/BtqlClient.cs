@@ -8,23 +8,21 @@ namespace Braintrust.Sdk.Api.Internal;
 
 /// <summary>
 /// Internal client for querying the Braintrust BTQL API.
-/// Retries with exponential backoff until spans are fresh (freshness == "complete") or max retries are hit.
 /// </summary>
-internal class BtqlClient : IBtqlClient
+internal sealed class BtqlClient
 {
-    private const int MaxFreshnessRetries = 7;
-    private const int BaseFreshnessDelayMs = 1000;
-    private const int MaxFreshnessDelayMs = 8000;
+    private const int MaxAttempts = 8;
+    private const int BaseDelayMs = 1000;
+    private const int MaxDelayMs = 8000;
 
     private readonly BraintrustConfig _config;
     private readonly HttpClient _httpClient;
-    private readonly bool _ownsHttpClient;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly Func<int, CancellationToken, Task> _delayFunc;
 
     internal BtqlClient(
         BraintrustConfig config,
-        HttpClient? httpClient = null,
+        HttpClient httpClient,
         Func<int, CancellationToken, Task>? delayFunc = null,
         bool noDelay = false)
     {
@@ -39,59 +37,67 @@ internal class BtqlClient : IBtqlClient
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
-        if (httpClient == null)
-        {
-            _httpClient = new HttpClient { BaseAddress = new Uri(config.ApiUrl) };
-            _ownsHttpClient = true;
-        }
-        else
-        {
-            _httpClient = httpClient;
-            _ownsHttpClient = false;
-        }
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
     /// <summary>
-    /// Queries spans for a given experiment and root span ID via the BTQL API.
-    /// Retries until freshness is "complete" and rows are non-empty, or until max retries are hit.
-    /// Backoff schedule: 1s, 2s, 4s, 8s, 8s, 8s, 8s (7 delays, 8 total attempts).
+    /// Queries spans for a given experiment and root trace ID via the BTQL API.
+    /// Retries until every expected span is present, or throws after eight attempts.
+    /// Backoff schedule: 1s, 2s, 4s, 8s, 8s, 8s, 8s.
     /// Score-type spans are excluded from results.
     /// </summary>
-    public async Task<IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>> QuerySpansAsync(
-        string experimentId, string rootSpanId, CancellationToken cancellationToken = default)
+    internal async Task<IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>> QuerySpansAsync(
+        string experimentId,
+        string rootTraceId,
+        IReadOnlyCollection<string> expectedSpanIds,
+        CancellationToken cancellationToken = default)
     {
         var safeExperimentId = experimentId.Replace("'", "''");
-        var safeRootSpanId = rootSpanId.Replace("'", "''");
-        var query = $"SELECT * FROM experiment('{safeExperimentId}') WHERE root_span_id = '{safeRootSpanId}' AND span_attributes.type != 'score' LIMIT 1000";
+        var safeRootTraceId = rootTraceId.Replace("'", "''");
+        var query = $"SELECT * FROM experiment('{safeExperimentId}') WHERE root_span_id = '{safeRootTraceId}' AND span_attributes.type != 'score' LIMIT 1000";
 
-        BtqlResponse? lastResponse = null;
-        int delayMs = BaseFreshnessDelayMs;
+        int delayMs = BaseDelayMs;
 
-        for (int attempt = 0; attempt <= MaxFreshnessRetries; attempt++)
+        for (int attempt = 0; attempt < MaxAttempts; attempt++)
         {
             if (attempt > 0)
             {
                 await _delayFunc(delayMs, cancellationToken).ConfigureAwait(false);
-                delayMs = Math.Min(delayMs * 2, MaxFreshnessDelayMs);
+                delayMs = Math.Min(delayMs * 2, MaxDelayMs);
             }
 
-            lastResponse = await PostBtqlAsync(query, cancellationToken).ConfigureAwait(false);
+            var response = await PostBtqlAsync(query, cancellationToken).ConfigureAwait(false);
 
-            if ((lastResponse.Freshness == "complete" && lastResponse.Data.Count > 0)
-                || attempt == MaxFreshnessRetries)
+            var presentSpanIds = response.Data
+                .Select(row => row.TryGetValue("span_id", out var id) ? id.GetString() : null)
+                .Where(id => id is not null)
+                .ToHashSet(StringComparer.Ordinal);
+            var missingSpanIds = expectedSpanIds
+                .Where(id => !presentSpanIds.Contains(id))
+                .ToList();
+
+            if (missingSpanIds.Count == 0)
             {
-                break;
+                return response.Data
+                    .Cast<IReadOnlyDictionary<string, JsonElement>>()
+                    .ToList();
+            }
+
+            if (attempt == MaxAttempts - 1)
+            {
+                throw new InvalidOperationException(
+                    $"Timed out waiting for trace spans: {string.Join(", ", missingSpanIds)}");
             }
         }
 
-        if (lastResponse == null || lastResponse.Data.Count == 0)
-        {
-            return [];
-        }
+        throw new InvalidOperationException("BTQL trace query exhausted its retry loop");
+    }
 
-        return lastResponse.Data
-            .Cast<IReadOnlyDictionary<string, JsonElement>>()
-            .ToList();
+    internal async Task<IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>> QueryAsync(
+        string query, CancellationToken cancellationToken = default)
+    {
+        var response = await PostBtqlAsync(query, cancellationToken).ConfigureAwait(false);
+        return response.Data.Cast<IReadOnlyDictionary<string, JsonElement>>().ToList();
     }
 
     private async Task<BtqlResponse> PostBtqlAsync(string query, CancellationToken cancellationToken)
@@ -109,14 +115,6 @@ internal class BtqlClient : IBtqlClient
         return JsonSerializer.Deserialize<BtqlResponse>(content, _jsonOptions) ?? new BtqlResponse();
     }
 
-    public void Dispose()
-    {
-        if (_ownsHttpClient)
-        {
-            _httpClient.Dispose();
-        }
-    }
-
     private record BtqlRequest(
         [property: JsonPropertyName("query")] string Query);
 
@@ -125,7 +123,25 @@ internal class BtqlClient : IBtqlClient
         [JsonPropertyName("data")]
         public List<Dictionary<string, JsonElement>> Data { get; init; } = new();
 
-        [JsonPropertyName("freshness")]
-        public string? Freshness { get; init; }
+        [JsonPropertyName("freshness_state")]
+        public FreshnessState? FreshnessState { get; init; }
+
+        [JsonPropertyName("realtime_state")]
+        public RealtimeState? RealtimeState { get; init; }
+    }
+
+    private sealed class FreshnessState
+    {
+        [JsonPropertyName("last_processed_xact_id")]
+        public string? LastProcessedXactId { get; init; }
+
+        [JsonPropertyName("last_considered_xact_id")]
+        public string? LastConsideredXactId { get; init; }
+    }
+
+    private sealed class RealtimeState
+    {
+        [JsonPropertyName("type")]
+        public string? Type { get; init; }
     }
 }

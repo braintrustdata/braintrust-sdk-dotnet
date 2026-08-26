@@ -62,7 +62,8 @@ class Program
                 Console.WriteLine($"Messages: {response.Messages.Count}");
 
                 // Print Braintrust link
-                var url = await braintrust.GetProjectUriAsync()
+                var projectUri = await braintrust.GetProjectUriAsync();
+                var url = projectUri.AbsoluteUri
                     + $"/logs?r={rootActivity.TraceId}&s={rootActivity.SpanId}";
                 Console.WriteLine($"\n  View your trace in Braintrust: {url}\n");
             }

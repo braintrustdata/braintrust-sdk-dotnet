@@ -13,7 +13,8 @@ class Program
             ArgumentNullException.ThrowIfNull(activity);
             Console.WriteLine("Performing simple operation...");
             activity.SetTag("some boolean attribute", true);
-            url = await braintrust.GetProjectUriAsync() + $"/logs?r={activity.TraceId}&s={activity.SpanId}";
+            var projectUri = await braintrust.GetProjectUriAsync();
+            url = projectUri.AbsoluteUri + $"/logs?r={activity.TraceId}&s={activity.SpanId}";
         }
         Console.WriteLine($"\n\n  Example complete! View your data in Braintrust: {url}");
     }

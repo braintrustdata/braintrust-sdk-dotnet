@@ -65,7 +65,7 @@ class Program
         // Scorer: uses the trace to verify each LLM call returned a numeric string
         var traceScorer = new FruitTraceScorer();
 
-        var eval = await braintrust
+        using var eval = await braintrust
             .EvalBuilder<string, Dictionary<string, int>>()
             .Name($"trace-scoring-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")
             .Tags("trace-scoring", "dotnet-sdk", "multi-call")

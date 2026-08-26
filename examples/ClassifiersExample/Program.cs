@@ -137,7 +137,7 @@ class Program
             .Select(m => DatasetCase.Of(m.Input, m.Expected))
             .ToArray();
 
-        var eval = await braintrust
+        using var eval = await braintrust
             .EvalBuilder<string, string>()
             .Name($"dotnet-classifiers-example-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")
             .Tags("classifiers-example", "dotnet-sdk")

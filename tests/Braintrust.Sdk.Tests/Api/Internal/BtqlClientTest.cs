@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Braintrust.Sdk.Api.Internal;
+using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 
 namespace Braintrust.Sdk.Tests.Api.Internal;
@@ -23,62 +23,69 @@ public class BtqlClientTest
         };
     }
 
-    private static string MakeBtqlResponse(string freshness, int rowCount = 1)
+    private static string MakeBtqlResponse(int rowCount = 1)
     {
         var rows = Enumerable.Range(0, rowCount)
-            .Select(i => $"{{\"span_id\":\"{i}\",\"span_attributes\":{{\"type\":\"task\"}}}}")
+            .Select(i => new { span_id = i.ToString(), span_attributes = new { type = "task" } })
             .ToList();
-        return $"{{\"data\":[{string.Join(",", rows)}],\"freshness\":\"{freshness}\"}}";
+        return JsonSerializer.Serialize(new
+        {
+            data = rows,
+            freshness_state = new
+            {
+                last_processed_xact_id = "42",
+                last_considered_xact_id = "42",
+            },
+            realtime_state = new { type = "on" },
+        });
     }
 
     [Fact]
     public async Task ReturnsDataWhenFreshnessIsComplete()
     {
         var handler = new MockHttpMessageHandler();
-        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse("complete", 2)));
+        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse(2)));
 
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.braintrust.dev") };
-        var client = new BtqlClient(MakeConfig(), httpClient, noDelay: true);
+        using var client = new BraintrustOpenApiClient(MakeConfig(), handler, noBtqlDelay: true);
 
-        var result = await client.QuerySpansAsync("exp-id", "root-span-id");
+        var result = await client.QuerySpansAsync("exp-id", "root-span-id", ["0", "1"]);
 
         Assert.Equal(2, result.Count);
         Assert.Equal(1, handler.RequestCount);
     }
 
     [Fact]
-    public async Task RetriesWhenFreshnessIsPartial()
+    public async Task RetriesUntilTheExpectedSpanAppears()
     {
         var handler = new MockHttpMessageHandler();
-        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse("partial", 1)));
-        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse("partial", 1)));
-        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse("complete", 3)));
+        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse(1)));
+        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse(1)));
+        handler.Enqueue(MakeJsonResponse(MakeBtqlResponse(3)));
 
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.braintrust.dev") };
-        var client = new BtqlClient(MakeConfig(), httpClient, noDelay: true);
+        using var client = new BraintrustOpenApiClient(MakeConfig(), handler, noBtqlDelay: true);
 
-        var result = await client.QuerySpansAsync("exp-id", "root-span-id");
+        var result = await client.QuerySpansAsync("exp-id", "root-span-id", ["2"]);
 
         Assert.Equal(3, result.Count);
         Assert.Equal(3, handler.RequestCount);
     }
 
     [Fact]
-    public async Task ReturnsDataAfterMaxRetriesEvenIfNotComplete()
+    public async Task ThrowsAfterMaxRetriesWhenTheExpectedSpanIsMissing()
     {
         var handler = new MockHttpMessageHandler();
         // Enqueue 8 partial responses (1 initial + 7 retries)
         for (int i = 0; i < 8; i++)
         {
-            handler.Enqueue(MakeJsonResponse(MakeBtqlResponse("partial", 1)));
+            handler.Enqueue(MakeJsonResponse(MakeBtqlResponse(1)));
         }
 
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.braintrust.dev") };
-        var client = new BtqlClient(MakeConfig(), httpClient, noDelay: true);
+        using var client = new BraintrustOpenApiClient(MakeConfig(), handler, noBtqlDelay: true);
 
-        var result = await client.QuerySpansAsync("exp-id", "root-span-id");
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.QuerySpansAsync("exp-id", "root-span-id", ["missing"]));
 
-        Assert.NotEmpty(result);
+        Assert.Contains("missing", exception.Message);
         Assert.Equal(8, handler.RequestCount); // 1 initial + 7 retries
     }
 
@@ -88,16 +95,15 @@ public class BtqlClientTest
         var handler = new MockHttpMessageHandler();
         for (int i = 0; i < 8; i++)
         {
-            handler.Enqueue(MakeJsonResponse("{\"data\":[],\"freshness\":\"partial\"}"));
+            handler.Enqueue(MakeJsonResponse(MakeBtqlResponse(rowCount: 0)));
         }
 
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.braintrust.dev") };
-        var client = new BtqlClient(MakeConfig(), httpClient, noDelay: true);
+        using var client = new BraintrustOpenApiClient(MakeConfig(), handler, noBtqlDelay: true);
 
-        var result = await client.QuerySpansAsync("exp-id", "root-span-id");
+        var result = await client.QuerySpansAsync("exp-id", "root-span-id", []);
 
         Assert.Empty(result);
-        Assert.Equal(8, handler.RequestCount);
+        Assert.Equal(1, handler.RequestCount);
     }
 
     [Fact]
@@ -114,13 +120,13 @@ public class BtqlClientTest
         // All partial responses so we hit all retries
         for (int i = 0; i < 8; i++)
         {
-            handler.Enqueue(MakeJsonResponse("{\"data\":[],\"freshness\":\"partial\"}"));
+            handler.Enqueue(MakeJsonResponse(MakeBtqlResponse(rowCount: 0)));
         }
 
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.braintrust.dev") };
-        var client = new BtqlClient(MakeConfig(), httpClient, delayFunc: captureDelay);
+        using var client = new BraintrustOpenApiClient(MakeConfig(), handler, btqlDelayFunc: captureDelay);
 
-        await client.QuerySpansAsync("exp-id", "root-span-id");
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.QuerySpansAsync("exp-id", "root-span-id", ["missing"]));
 
         // Expected delays: 1s, 2s, 4s, 8s, 8s, 8s, 8s (7 delays for 7 retries)
         Assert.Equal(7, delays.Count);
@@ -135,13 +141,12 @@ public class BtqlClientTest
         var handler = new MockHttpMessageHandler(async req =>
         {
             capturedRequests.Add(await req.Content!.ReadAsStringAsync());
-            return MakeJsonResponse(MakeBtqlResponse("complete", 1));
+            return MakeJsonResponse(MakeBtqlResponse(1));
         });
 
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.braintrust.dev") };
-        var client = new BtqlClient(MakeConfig(), httpClient, noDelay: true);
+        using var client = new BraintrustOpenApiClient(MakeConfig(), handler, noBtqlDelay: true);
 
-        await client.QuerySpansAsync("exp'id", "root'span'id");
+        await client.QuerySpansAsync("exp'id", "root'span'id", ["0"]);
 
         Assert.Single(capturedRequests);
         var body = JsonSerializer.Deserialize<JsonElement>(capturedRequests[0]);
@@ -159,13 +164,12 @@ public class BtqlClientTest
         var handler = new MockHttpMessageHandler(req =>
         {
             capturedAuth = req.Headers.Authorization?.ToString();
-            return Task.FromResult(MakeJsonResponse(MakeBtqlResponse("complete", 1)));
+            return Task.FromResult(MakeJsonResponse(MakeBtqlResponse(1)));
         });
 
-        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.braintrust.dev") };
-        var client = new BtqlClient(MakeConfig(), httpClient, noDelay: true);
+        using var client = new BraintrustOpenApiClient(MakeConfig(), handler, noBtqlDelay: true);
 
-        await client.QuerySpansAsync("exp-id", "root-span-id");
+        await client.QuerySpansAsync("exp-id", "root-span-id", ["0"]);
 
         Assert.Equal("Bearer test-key", capturedAuth);
     }

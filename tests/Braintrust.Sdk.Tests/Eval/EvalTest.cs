@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using System.Net;
 using System.Text.Json;
+using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 using Braintrust.Sdk.Eval;
 using Braintrust.Sdk.Git;
+using Generated = Braintrust.Sdk.Api.Generated;
 
 namespace Braintrust.Sdk.Tests.Eval;
 
@@ -41,7 +44,7 @@ public class EvalTest : IDisposable
         );
 
         // Create a mock API client that doesn't make real API calls
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var cases = new DatasetCase<string, string>[]
         {
@@ -62,7 +65,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(cases)
             .TaskFunction(food => "fruit")
             .Scorers(
@@ -84,7 +87,7 @@ public class EvalTest : IDisposable
         Assert.All(rootSpans, span =>
         {
             Assert.Equal(ActivityStatusCode.Unset, span.Status);
-            Assert.Equal("experiment_id:test-experiment-id", span.GetTagItem("braintrust.parent"));
+            Assert.Equal($"experiment_id:{StubBraintrustApi.ExperimentId}", span.GetTagItem("braintrust.parent"));
             Assert.Equal("eval", GetSpanType(span));
             Assert.NotNull(span.GetTagItem("braintrust.input_json"));
             Assert.NotNull(span.GetTagItem("braintrust.expected_json"));
@@ -121,13 +124,13 @@ public class EvalTest : IDisposable
     public async Task EvalRequiresAtLeastOneScorer()
     {
         var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Eval<string, string>.NewBuilder()
                 .Name("test-eval")
                 .Config(config)
-                .ApiClient(mockClient)
+                .ApiClient(mockClient.Client)
                 .Cases(DatasetCase.Of("input", "expected"))
                 .TaskFunction(x => x)
                 .BuildAsync());
@@ -137,13 +140,13 @@ public class EvalTest : IDisposable
     public async Task EvalRequiresDataset()
     {
         var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Eval<string, string>.NewBuilder()
                 .Name("test-eval")
                 .Config(config)
-                .ApiClient(mockClient)
+                .ApiClient(mockClient.Client)
                 .TaskFunction(x => x)
                 .Scorers(new FunctionScorer<string, string>("test", (_, _) => 1.0))
                 .BuildAsync());
@@ -153,16 +156,41 @@ public class EvalTest : IDisposable
     public async Task EvalRequiresTask()
     {
         var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Eval<string, string>.NewBuilder()
                 .Name("test-eval")
                 .Config(config)
-                .ApiClient(mockClient)
+                .ApiClient(mockClient.Client)
                 .Cases(DatasetCase.Of("input", "expected"))
                 .Scorers(new FunctionScorer<string, string>("test", (_, _) => 1.0))
                 .BuildAsync());
+    }
+
+    [Fact]
+    public async Task DisposingAnEvalLeavesACallerSuppliedClientOpen()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+        using var mockClient = new StubBraintrustApi(config);
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(new FunctionScorer<string, string>("test", (_, _) => 1.0))
+            .BuildAsync();
+
+        eval.Dispose();
+
+        // Still usable: the eval only owns the clients it opened itself.
+        var project = await mockClient.Api.GetProjectIdAsync(Guid.Parse(StubBraintrustApi.ProjectId));
+        Assert.Equal(StubBraintrustApi.ProjectId, project.Id.ToString());
     }
 
     [Fact]
@@ -217,7 +245,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var tags = new List<string> { "test-tag", "fruit-test" };
         var metadata = new Dictionary<string, object>
@@ -236,7 +264,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-with-tags")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(cases)
             .TaskFunction(food => "fruit")
             .Scorers(
@@ -261,7 +289,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var experimentTags = new[] { "experiment-tag", "dotnet-sdk", "v1" };
         var experimentMetadata = new Dictionary<string, object>
@@ -281,7 +309,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-with-experiment-metadata")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(cases)
             .TaskFunction(food => "fruit")
             .Tags(experimentTags)
@@ -304,7 +332,7 @@ public class EvalTest : IDisposable
         Assert.Equal(3, lastRequest.Tags.Count);
         Assert.Contains("experiment-tag", lastRequest.Tags);
         Assert.NotNull(lastRequest.Metadata);
-        Assert.Equal("gpt-4o-mini", lastRequest.Metadata["model"]);
+        Assert.Equal("gpt-4o-mini", lastRequest.Metadata["model"].ToString());
     }
 
     [Fact]
@@ -317,14 +345,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
-
-        var spans = new List<IReadOnlyDictionary<string, JsonElement>>
-        {
-            MockBtqlClient.MakeSpan("task"),
-            MockBtqlClient.MakeSpan("llm")
-        };
-        var mockBtqlClient = new MockBtqlClient(spans);
+        using var mockClient = new StubBraintrustApi(config);
 
         EvalTrace? receivedTrace = null;
         var tracedScorer = new TestTracedScorer("traced_scorer", (taskResult, trace) =>
@@ -336,8 +357,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-traced")
             .Config(config)
-            .ApiClient(mockClient)
-            .BtqlClient(mockBtqlClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(tracedScorer)
@@ -351,6 +371,70 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
+    public async Task An_api_failure_surfaces_as_the_generated_exception()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_API_URL", "http://localhost:1"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        using var handler = new QueuedHttpHandler();
+        handler.Enqueue("""{"error":"boom"}""", HttpStatusCode.InternalServerError);
+        using var apiClient = new BraintrustOpenApiClient(config, handler);
+
+        var error = await Assert.ThrowsAnyAsync<Generated.ApiException>(() => Eval<string, string>.NewBuilder()
+            .Name("test-eval-failure")
+            .Config(config)
+            .ApiClient(apiClient)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(new FunctionScorer<string, string>("noop", (_, _) => 1.0))
+            .BuildAsync());
+
+        Assert.Equal(500, error.StatusCode);
+        Assert.Contains("boom", error.Message);
+    }
+
+    [Fact]
+    public async Task The_openapi_client_uses_its_transport_for_btql()
+    {
+        // Nothing listens on port 1: a separate BTQL transport would fail to connect instead
+        // of reaching the handler owned by this client.
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_API_URL", "http://localhost:1"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        using var mockClient = new StubBraintrustApi(config);
+
+        IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>? spans = null;
+        var tracedScorer = new TestTracedScorer("span_checker", async (taskResult, trace) =>
+        {
+            spans = await trace.GetSpansAsync();
+            return [new Score("span_checker", 1.0)];
+        });
+
+        using var eval = await Eval<string, string>.NewBuilder()
+            .Name("test-eval-btql-transport")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .Cases(DatasetCase.Of("input", "expected"))
+            .TaskFunction(x => x)
+            .Scorers(tracedScorer)
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        Assert.Contains("/btql", mockClient.Paths);
+        Assert.NotNull(spans);
+        Assert.Single(spans);
+    }
+
+    [Fact]
     public async Task TracedScorerCanAccessSpansViaTrace()
     {
         var config = BraintrustConfig.Of(
@@ -359,14 +443,12 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
-
         var spans = new List<IReadOnlyDictionary<string, JsonElement>>
         {
-            MockBtqlClient.MakeSpan("task"),
-            MockBtqlClient.MakeSpan("llm")
+            BtqlTestData.MakeSpan("task"),
+            BtqlTestData.MakeSpan("llm")
         };
-        var mockBtqlClient = new MockBtqlClient(spans);
+        using var mockClient = new StubBraintrustApi(config, btqlRows: spans);
 
         IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>? receivedSpans = null;
         var tracedScorer = new TestTracedScorer("span_checker", async (taskResult, trace) =>
@@ -378,8 +460,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-spans")
             .Config(config)
-            .ApiClient(mockClient)
-            .BtqlClient(mockBtqlClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(tracedScorer)
@@ -389,8 +470,7 @@ public class EvalTest : IDisposable
 
         Assert.NotNull(receivedSpans);
         Assert.Equal(2, receivedSpans.Count);
-        // BtqlClient was queried exactly once for this eval case
-        Assert.Equal(1, mockBtqlClient.QueryCount);
+        Assert.Equal(1, mockClient.BtqlQueryCount);
     }
 
     [Fact]
@@ -402,8 +482,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
-        var mockBtqlClient = new MockBtqlClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         // Scorer that does NOT access the trace
         var tracedScorer = new TestTracedScorer("no_access", (taskResult, trace) =>
@@ -415,8 +494,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-lazy")
             .Config(config)
-            .ApiClient(mockClient)
-            .BtqlClient(mockBtqlClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(tracedScorer)
@@ -425,7 +503,7 @@ public class EvalTest : IDisposable
         await eval.RunAsync();
 
         // BTQL was NOT queried because scorer never accessed the trace
-        Assert.Equal(0, mockBtqlClient.QueryCount);
+        Assert.Equal(0, mockClient.BtqlQueryCount);
     }
 
     [Fact]
@@ -437,8 +515,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
-        var mockBtqlClient = new MockBtqlClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var basicScorer = new FunctionScorer<string, string>("basic", (_, _) => 1.0);
         var tracedScorer = new TestTracedScorer("traced", (taskResult, trace) =>
@@ -447,8 +524,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-mixed-scorers")
             .Config(config)
-            .ApiClient(mockClient)
-            .BtqlClient(mockBtqlClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(basicScorer, tracedScorer)
@@ -460,7 +536,7 @@ public class EvalTest : IDisposable
     }
 
     [Fact]
-    public async Task BasicScorerContinuesToWorkWithoutBtqlClient()
+    public async Task BasicScorerDoesNotQueryBtql()
     {
         var config = BraintrustConfig.Of(
             ("BRAINTRUST_API_KEY", "test-key"),
@@ -468,13 +544,12 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
-        // No traced scorers: BtqlClient is created but never queried
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-basic-only")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(new FunctionScorer<string, string>("basic", (_, _) => 1.0))
@@ -482,6 +557,7 @@ public class EvalTest : IDisposable
 
         var result = await eval.RunAsync();
         Assert.NotNull(result.ExperimentUrl);
+        Assert.Equal(0, mockClient.BtqlQueryCount);
     }
 
     [Fact]
@@ -584,7 +660,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var cases = new DatasetCase<string, string>[]
         {
@@ -597,7 +673,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-with-concurrency")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(cases)
             .TaskFunction(food => "fruit")
             .MaxConcurrency(2)
@@ -612,23 +688,219 @@ public class EvalTest : IDisposable
         Assert.Contains("test-eval-with-concurrency", result.ExperimentUrl);
     }
 
+    [Theory]
+    [InlineData(2)]
+    [InlineData(null)]
+    public async Task DatasetFailureWaitsForStartedCases(int? maxConcurrency)
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+        using var mockClient = new StubBraintrustApi(config);
+
+        var releaseTasks = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstTaskStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = 0;
+        var completed = 0;
+
+        static async IAsyncEnumerable<DatasetCase<string, string>> FailingCases()
+        {
+            yield return new("one", "one");
+            yield return new("two", "two");
+            await Task.Yield();
+            throw new InvalidOperationException("dataset failed");
+        }
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("dataset-failure")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .Dataset(new TestDataset(FailingCases))
+            .TaskFunction(async input =>
+            {
+                Interlocked.Increment(ref started);
+                firstTaskStarted.TrySetResult();
+                await releaseTasks.Task;
+                Interlocked.Increment(ref completed);
+                return input;
+            })
+            .MaxConcurrency(maxConcurrency)
+            .Scorers(new FunctionScorer<string, string>("match", (expected, actual) => expected == actual ? 1.0 : 0.0))
+            .BuildAsync();
+
+        var run = eval.RunAsync();
+        await firstTaskStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(run.IsCompleted);
+
+        releaseTasks.TrySetResult();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => run);
+        Assert.Equal("dataset failed", error.Message);
+        Assert.Equal(started, completed);
+    }
+
+    [Fact]
+    public async Task MaxConcurrencyAppliesBackpressureToDatasetEnumeration()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+        using var mockClient = new StubBraintrustApi(config);
+
+        var releaseTasks = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bothTasksStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queueFilled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var enumerated = 0;
+        var started = 0;
+
+        async IAsyncEnumerable<DatasetCase<string, string>> Cases()
+        {
+            for (var i = 0; i < 100; i++)
+            {
+                if (Interlocked.Increment(ref enumerated) == 4)
+                {
+                    queueFilled.TrySetResult();
+                }
+                yield return new(i.ToString(), i.ToString());
+                await Task.Yield();
+            }
+        }
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("bounded-dataset")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .Dataset(new TestDataset(Cases))
+            .TaskFunction(async input =>
+            {
+                if (Interlocked.Increment(ref started) == 2)
+                {
+                    bothTasksStarted.TrySetResult();
+                }
+                await releaseTasks.Task;
+                return input;
+            })
+            .MaxConcurrency(2)
+            .Scorers(new FunctionScorer<string, string>("match", (expected, actual) => expected == actual ? 1.0 : 0.0))
+            .BuildAsync();
+
+        var run = eval.RunAsync();
+        await bothTasksStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await queueFilled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Two cases are active and at most two more can be waiting in the bounded queue.
+        Assert.Equal(4, Volatile.Read(ref enumerated));
+
+        releaseTasks.TrySetResult();
+        await run;
+        Assert.Equal(100, enumerated);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(null)]
+    public async Task CaseFailureStopsDatasetEnumerationAndQueuedWork(int? maxConcurrency)
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+        using var mockClient = new StubBraintrustApi(config);
+
+        var enumerated = 0;
+        var invoked = 0;
+
+        async IAsyncEnumerable<DatasetCase<string, string>> Cases()
+        {
+            for (var i = 0; i < 100; i++)
+            {
+                Interlocked.Increment(ref enumerated);
+                yield return new(i.ToString(), i.ToString());
+                await Task.Yield();
+            }
+        }
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("failed-case-stops-producer")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .Dataset(new TestDataset(Cases))
+            .TaskFunction(input =>
+            {
+                Interlocked.Increment(ref invoked);
+                return input;
+            })
+            .MaxConcurrency(maxConcurrency)
+            .Scorers(new FunctionScorer<string, string>("invalid", (_, _) => 2.0))
+            .BuildAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => eval.RunAsync());
+
+        Assert.Equal(1, invoked);
+        Assert.InRange(enumerated, 1, 2);
+    }
+
+    [Fact]
+    public async Task UnsampledTaskActivityDoesNotFailEvaluation()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+        using var mockClient = new StubBraintrustApi(config);
+        using var activitySource = new ActivitySource("eval-selective-sampling-test");
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == activitySource.Name,
+            Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
+                options.Name == "eval"
+                    ? ActivitySamplingResult.AllDataAndRecorded
+                    : ActivitySamplingResult.None,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        var invoked = false;
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("unsampled-task")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .ActivitySource(activitySource)
+            .Cases(DatasetCase.Of("input", "input"))
+            .TaskFunction(input =>
+            {
+                invoked = true;
+                return input;
+            })
+            .Scorers(new FunctionScorer<string, string>("match", (expected, actual) => expected == actual ? 1.0 : 0.0))
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        Assert.True(invoked);
+    }
+
     [Fact]
     public async Task EvalAutoCollectsRepoInfo()
     {
         // When running in a git repo (which the test suite is), repo_info should be
-        // auto-populated on the CreateExperimentRequest.
+        // auto-populated on the generated experiment request.
         var config = BraintrustConfig.Of(
             ("BRAINTRUST_API_KEY", "test-key"),
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-repo-info")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(new FunctionScorer<string, string>("match", (expected, actual) => expected == actual ? 1.0 : 0.0))
@@ -638,9 +910,9 @@ public class EvalTest : IDisposable
 
         var lastRequest = mockClient.LastCreateExperimentRequest;
         Assert.NotNull(lastRequest);
-        Assert.NotNull(lastRequest.RepoInfo);
-        Assert.NotNull(lastRequest.RepoInfo.Commit);
-        Assert.Matches("^[0-9a-f]{40}$", lastRequest.RepoInfo.Commit);
+        Assert.NotNull(lastRequest.Repo_info);
+        Assert.NotNull(lastRequest.Repo_info.Commit);
+        Assert.Matches("^[0-9a-f]{40}$", lastRequest.Repo_info.Commit);
     }
 
     [Fact]
@@ -653,12 +925,12 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-no-repo-info")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(new FunctionScorer<string, string>("match", (_, _) => 1.0))
@@ -669,7 +941,7 @@ public class EvalTest : IDisposable
 
         var lastRequest = mockClient.LastCreateExperimentRequest;
         Assert.NotNull(lastRequest);
-        Assert.Null(lastRequest.RepoInfo);
+        Assert.Null(lastRequest.Repo_info);
     }
 
     [Fact]
@@ -681,7 +953,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
         var customRepoInfo = new RepoInfo(
             Commit: "abc123def456",
             Branch: "feature/test",
@@ -691,7 +963,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-custom-repo-info")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(new FunctionScorer<string, string>("match", (_, _) => 1.0))
@@ -702,10 +974,10 @@ public class EvalTest : IDisposable
 
         var lastRequest = mockClient.LastCreateExperimentRequest;
         Assert.NotNull(lastRequest);
-        Assert.NotNull(lastRequest.RepoInfo);
-        Assert.Equal("abc123def456", lastRequest.RepoInfo.Commit);
-        Assert.Equal("feature/test", lastRequest.RepoInfo.Branch);
-        Assert.Equal(false, lastRequest.RepoInfo.Dirty);
+        Assert.NotNull(lastRequest.Repo_info);
+        Assert.Equal("abc123def456", lastRequest.Repo_info.Commit);
+        Assert.Equal("feature/test", lastRequest.Repo_info.Branch);
+        Assert.Equal(false, lastRequest.Repo_info.Dirty);
     }
 
     [Fact]
@@ -717,12 +989,12 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
 
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval-no-git")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(new FunctionScorer<string, string>("match", (_, _) => 1.0))
@@ -733,7 +1005,7 @@ public class EvalTest : IDisposable
 
         var lastRequest = mockClient.LastCreateExperimentRequest;
         Assert.NotNull(lastRequest);
-        Assert.Null(lastRequest.RepoInfo);
+        Assert.Null(lastRequest.Repo_info);
     }
 
     // -------------------------------------------------------------------------
@@ -750,7 +1022,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var capturedActivities = new List<Activity>();
         using var listener = new ActivityListener
@@ -764,7 +1036,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-task-throws")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction((Func<string, string>)(_ => throw new InvalidOperationException("task boom")))
             .Scorers(new FunctionScorer<string, string>("my_scorer", (_, _) => 1.0))
@@ -807,7 +1079,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var capturedActivities = new List<Activity>();
         using var listener = new ActivityListener
@@ -821,7 +1093,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-task-throws-multi")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction((Func<string, string>)(_ => throw new InvalidOperationException("task boom")))
             .Scorers(
@@ -856,7 +1128,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var capturedActivities = new List<Activity>();
         using var listener = new ActivityListener
@@ -870,7 +1142,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-scorer-throws")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(
@@ -917,7 +1189,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var capturedActivities = new List<Activity>();
         using var listener = new ActivityListener
@@ -931,7 +1203,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-custom-fallback")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction(x => x)
             .Scorers(new CustomFallbackScorer("custom_scorer", fallbackValue: 0.5))
@@ -957,7 +1229,7 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
         );
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var capturedActivities = new List<Activity>();
         using var listener = new ActivityListener
@@ -971,7 +1243,7 @@ public class EvalTest : IDisposable
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-custom-task-exception-fallback")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("input", "expected"))
             .TaskFunction((Func<string, string>)(_ => throw new InvalidOperationException("task boom")))
             .Scorers(new CustomFallbackScorer("custom_scorer", fallbackValue: 0.75))
@@ -995,13 +1267,12 @@ public class EvalTest : IDisposable
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "my project")
         );
 
-        var mockClient = new MockBraintrustApiClient(orgName: "Braintrust SDKs", projectName: "my project");
+        var mockClient = new StubBraintrustApi(config, orgName: "Braintrust SDKs");
 
         var eval = await Eval<string, string>.NewBuilder()
             .Name("my eval")
             .Config(config)
-            .ApiClient(mockClient)
-            .BtqlClient(new MockBtqlClient())
+            .ApiClient(mockClient.Client)
             .Cases(new DatasetCase<string, string>("strawberry", "fruit"))
             .TaskFunction(food => "fruit")
             .Scorers(new FunctionScorer<string, string>("exact", (expected, actual) => expected == actual ? 1.0 : 0.0))
@@ -1014,9 +1285,110 @@ public class EvalTest : IDisposable
             result.ExperimentUrl);
     }
 
+    [Fact]
+    public async Task RemoteDatasetLinksTheExperimentAndEveryRow()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_API_URL", "https://test-api.example.com"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        const string datasetId = "b9356d7d-1a96-4f96-9d41-276e9ebd6afe";
+
+        using var handler = new QueuedHttpHandler();
+        handler.Enqueue("""{"data":[{"version":"1042","count":1}],"freshness":"complete"}""");
+        handler.Enqueue($$"""
+            {"events":[{
+              "id":"row-1",
+              "_xact_id":"1042",
+              "created":"2026-01-01T00:00:00Z",
+              "project_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+              "dataset_id":"{{datasetId}}",
+              "input":"strawberry",
+              "expected":"fruit"
+            }]}
+            """);
+
+        using var apiClient = new BraintrustOpenApiClient(config, handler);
+        var dataset = new DatasetBrainstoreImpl<string, string>(apiClient, datasetId);
+
+        using var mockClient = new StubBraintrustApi(config);
+        var capturedActivities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "braintrust-dotnet",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = capturedActivities.Add
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("dataset-eval")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .Dataset(dataset)
+            .TaskFunction(food => "fruit")
+            .Scorers(new FunctionScorer<string, string>("exact", (expected, actual) => expected == actual ? 1.0 : 0.0))
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        // The experiment points at the dataset and the exact version the run read.
+        Assert.Equal(Guid.Parse(datasetId), mockClient.LastCreateExperimentRequest?.Dataset_id);
+        Assert.Equal("1042", mockClient.LastCreateExperimentRequest?.Dataset_version);
+
+        // ...and each row points back at the record it came from.
+        var rootSpan = Assert.Single(capturedActivities.Where(a => a.DisplayName == "eval"));
+        var origin = JsonSerializer.Deserialize<JsonElement>(
+            (string)rootSpan.GetTagItem("braintrust.origin")!);
+        Assert.Equal("dataset", origin.GetProperty("object_type").GetString());
+        Assert.Equal(datasetId, origin.GetProperty("object_id").GetString());
+        Assert.Equal("row-1", origin.GetProperty("id").GetString());
+        Assert.Equal("1042", origin.GetProperty("_xact_id").GetString());
+    }
+
+    [Fact]
+    public async Task InMemoryDatasetLeavesTheExperimentUnlinked()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project")
+        );
+
+        using var mockClient = new StubBraintrustApi(config);
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("in-memory-eval")
+            .Config(config)
+            .ApiClient(mockClient.Client)
+            .Cases(new DatasetCase<string, string>("strawberry", "fruit"))
+            .TaskFunction(food => "fruit")
+            .Scorers(new FunctionScorer<string, string>("exact", (expected, actual) => expected == actual ? 1.0 : 0.0))
+            .BuildAsync();
+
+        await eval.RunAsync();
+
+        // The in-memory id is a local placeholder, not something the API would accept.
+        Assert.Null(mockClient.LastCreateExperimentRequest?.Dataset_id);
+        Assert.Null(mockClient.LastCreateExperimentRequest?.Dataset_version);
+    }
+
     // -------------------------------------------------------------------------
     // Test helper methods
     // -------------------------------------------------------------------------
+
+    private sealed class TestDataset(
+        Func<IAsyncEnumerable<DatasetCase<string, string>>> cases) : IDataset<string, string>
+    {
+        public string Id => "test-dataset";
+
+        public string? Version => "1";
+
+        public IAsyncEnumerable<DatasetCase<string, string>> GetCasesAsync() => cases();
+    }
 
     /// <summary>Returns the "type" field from braintrust.span_attributes JSON.</summary>
     private static string? GetSpanType(Activity span)
