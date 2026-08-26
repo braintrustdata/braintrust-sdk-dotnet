@@ -986,6 +986,34 @@ public class EvalTest : IDisposable
         Assert.Equal(0.75, GetScore(scoreSpan, "custom_scorer"));
     }
 
+    [Fact]
+    public async Task ExperimentUrlEscapesNamesWithSpaces()
+    {
+        var config = BraintrustConfig.Of(
+            ("BRAINTRUST_API_KEY", "test-key"),
+            ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
+            ("BRAINTRUST_DEFAULT_PROJECT_NAME", "my project")
+        );
+
+        var mockClient = new MockBraintrustApiClient(orgName: "Braintrust SDKs", projectName: "my project");
+
+        var eval = await Eval<string, string>.NewBuilder()
+            .Name("my eval")
+            .Config(config)
+            .ApiClient(mockClient)
+            .BtqlClient(new MockBtqlClient())
+            .Cases(new DatasetCase<string, string>("strawberry", "fruit"))
+            .TaskFunction(food => "fruit")
+            .Scorers(new FunctionScorer<string, string>("exact", (expected, actual) => expected == actual ? 1.0 : 0.0))
+            .BuildAsync();
+
+        var result = await eval.RunAsync();
+
+        Assert.Equal(
+            "https://braintrust.dev/app/Braintrust%20SDKs/p/my%20project/experiments/my%20eval",
+            result.ExperimentUrl);
+    }
+
     // -------------------------------------------------------------------------
     // Test helper methods
     // -------------------------------------------------------------------------

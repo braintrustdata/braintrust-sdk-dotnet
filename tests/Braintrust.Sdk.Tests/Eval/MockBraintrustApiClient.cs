@@ -7,8 +7,14 @@ namespace Braintrust.Sdk.Tests.Eval;
 /// </summary>
 internal class MockBraintrustApiClient : IBraintrustApiClient
 {
-    private readonly OrganizationInfo _orgInfo = new OrganizationInfo("test-org-id", "test-org");
-    private readonly Project _project = new Project("test-project-id", "test-project", "test-org-id");
+    private readonly OrganizationInfo _orgInfo;
+    private readonly Project _project;
+
+    public MockBraintrustApiClient(string orgName = "test-org", string projectName = "test-project")
+    {
+        _orgInfo = new OrganizationInfo("test-org-id", orgName);
+        _project = new Project("test-project-id", projectName, "test-org-id");
+    }
 
     /// <summary>
     /// The last CreateExperimentRequest received by GetOrCreateExperiment.

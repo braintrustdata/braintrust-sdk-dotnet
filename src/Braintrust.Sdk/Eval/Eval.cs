@@ -586,7 +586,7 @@ public sealed class Eval<TInput, TOutput>
             "experiments",
             Uri.EscapeDataString(experimentName));
 
-        return new UriBuilder(baseUri.Scheme, baseUri.Host, baseUri.Port, "/" + path).Uri.ToString();
+        return new UriBuilder(baseUri.Scheme, baseUri.Host, baseUri.Port, "/" + path).Uri.AbsoluteUri;
     }
 
 
