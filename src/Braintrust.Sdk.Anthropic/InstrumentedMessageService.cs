@@ -5,7 +5,6 @@ using System.Text.Json;
 using Anthropic.Models.Messages;
 using Anthropic.Services;
 using Anthropic.Services.Messages;
-using OpenTelemetry.Trace;
 
 namespace Braintrust.Sdk.Anthropic;
 
@@ -62,7 +61,7 @@ internal sealed class InstrumentedMessageService : IMessageService
             if (activity != null)
             {
                 activity.SetStatus(ActivityStatusCode.Error, ex.Message);
-                activity.RecordException(ex);
+                activity.AddException(ex);
             }
             throw;
         }
@@ -115,7 +114,7 @@ internal sealed class InstrumentedMessageService : IMessageService
                 if (activity != null)
                 {
                     activity.SetStatus(ActivityStatusCode.Error, ex.Message);
-                    activity.RecordException(ex);
+                    activity.AddException(ex);
                 }
                 throw;
             }

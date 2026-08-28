@@ -21,7 +21,7 @@ because `Braintrust.Sdk` references it with `PrivateAssets="all"`. See
 
 ## Basic usage
 
-`DefaultBraintrustApiClient` is the SDK's own client; its `Api` property is the generated
+`BraintrustOpenApiClient` is the SDK's own client; its `Api` property is the generated
 client, already wired up with the base URL, bearer auth and timeout from your config.
 
 ```csharp
@@ -29,7 +29,7 @@ using Braintrust.Sdk.Api;
 using Braintrust.Sdk.Config;
 using Generated = Braintrust.Sdk.Api.Generated;
 
-using var client = DefaultBraintrustApiClient.Of(BraintrustConfig.FromEnvironment());
+using var client = BraintrustOpenApiClient.Of(BraintrustConfig.FromEnvironment());
 Generated.IBraintrustGeneratedApiClient api = client.Api;
 
 // Create a project (POST /v1/project upserts by name).
@@ -42,7 +42,7 @@ Generated.Project project = await api.PostProjectAsync(new Generated.CreateProje
 Console.WriteLine($"{project.Id} {project.Name}");
 ```
 
-The generated client borrows the `HttpClient` owned by `DefaultBraintrustApiClient`, so keep
+The generated client borrows the `HttpClient` owned by `BraintrustOpenApiClient`, so keep
 that instance alive for as long as you use `Api`.
 
 ### Runnable example
@@ -165,9 +165,9 @@ serialize that field yourself if you need to.
 
 ### Errors
 
-Generated calls throw `Generated.ApiException` (or `Generated.ApiException<T>`), not the
-SDK's `Braintrust.Sdk.Api.ApiException` - only the SDK's own wrapper methods translate. The
-server's message is in `ex.Response`:
+Calls handled by the generated OpenAPI client throw `Generated.ApiException` (or
+`Generated.ApiException<T>`), including calls made by the SDK's wrapper methods. The server's
+message is in `ex.Response`:
 
 ```csharp
 try
@@ -191,14 +191,13 @@ The spec is generated from the API's own types, but a few declared filters are r
 runtime - `project_automation_name` on `GET /v1/project_automation`, for instance, comes back
 `400 Extraneous key`. Filter client-side when that happens.
 
-`/api/apikey/login` is not in the spec at all. `DefaultBraintrustApiClient` issues it by hand
-and exposes the result through `GetProjectAndOrgInfo`.
+`POST /btql` is absent from the spec, so `BraintrustOpenApiClient` implements that operation
+itself. Project and organization lookup use the generated endpoints.
 
 ## Compatibility
 
 The generated surface tracks whatever spec ref the build pinned, so it is **not** covered by
-the SDK's own compatibility promises: bumping the ref can rename a class or change a
-signature. Prefer `IBraintrustApiClient`'s methods where they already cover what you need.
+the SDK's own compatibility promises: bumping the ref can rename a class or change a signature.
 
 ## Bumping the spec
 

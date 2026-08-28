@@ -65,7 +65,7 @@ class Program
         }
 
         // Create and run the evaluation
-        var eval = await braintrust
+        using var eval = await braintrust
             .EvalBuilder<string, string>()
             .Name($"dotnet-eval-x-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}")
             // Experiment-level tags and metadata (shown in the Braintrust UI for the experiment)
@@ -75,6 +75,8 @@ class Program
                 { "model", "gpt-4o-mini" },
                 { "description", "Classifies food items as fruit or vegetable" }
             })
+            // instead of Cases, you can use a dataset from Braintrust
+            // .Dataset(await braintrust.FetchDatasetAsync<string, string>("food"))
             .Cases(
                 DatasetCase.Of("strawberry", "fruit"),
                 DatasetCase.Of("asparagus", "vegetable"),

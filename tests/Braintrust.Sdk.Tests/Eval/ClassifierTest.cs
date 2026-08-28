@@ -121,13 +121,13 @@ public class ClassifierTest : IDisposable
     public async Task EvalRequiresAtLeastScorersOrClassifiers()
     {
         var config = BraintrustConfig.Of(("BRAINTRUST_API_KEY", "test-key"));
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Eval<string, string>.NewBuilder()
                 .Name("test-eval")
                 .Config(config)
-                .ApiClient(mockClient)
+                .ApiClient(mockClient.Client)
                 .Cases(DatasetCase.Of("input", "expected"))
                 .TaskFunction(x => x)
                 .BuildAsync());
@@ -142,12 +142,12 @@ public class ClassifierTest : IDisposable
             ("BRAINTRUST_API_KEY", "test-key"),
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project"));
-        var mockClient = new MockBraintrustApiClient();
+        using var mockClient = new StubBraintrustApi(config);
 
         var eval = await Eval<string, string>.NewBuilder()
             .Name("test-eval")
             .Config(config)
-            .ApiClient(mockClient)
+            .ApiClient(mockClient.Client)
             .Cases(DatasetCase.Of("hello", "hi"))
             .TaskFunction(x => x)
             .Classifiers(new FunctionClassifier<string, string>(
@@ -440,11 +440,9 @@ public class ClassifierTest : IDisposable
     {
         var spans = new[]
         {
-            MockBtqlClient.MakeSpan("llm", input: new { messages = new[] { new { role = "user", content = "hi" } } },
+            BtqlTestData.MakeSpan("llm", input: new { messages = new[] { new { role = "user", content = "hi" } } },
                 output: new { choices = new[] { new { message = new { role = "assistant", content = "hello" } } } })
         };
-        var mockBtql = new MockBtqlClient(spans);
-
         var capturedSpanCount = -1;
         var classifier = new TracedClassifier(
             "trace_inspector",
@@ -459,11 +457,10 @@ public class ClassifierTest : IDisposable
             cases: new[] { DatasetCase.Of("hello", "hi") },
             taskFn: x => x,
             classifiers: new IClassifier<string, string>[] { classifier },
-            btqlClient: mockBtql);
+            btqlRows: spans);
 
         Assert.Single(rootSpans);
         Assert.Equal(1, capturedSpanCount);
-        Assert.Equal(1, mockBtql.QueryCount);
     }
 
     // =====================================================================
@@ -484,14 +481,13 @@ public class ClassifierTest : IDisposable
         Func<string, string> taskFn,
         IScorer<string, string>[]? scorers = null,
         IClassifier<string, string>[]? classifiers = null,
-        MockBtqlClient? btqlClient = null)
+        IReadOnlyList<IReadOnlyDictionary<string, JsonElement>>? btqlRows = null)
     {
         var config = BraintrustConfig.Of(
             ("BRAINTRUST_API_KEY", "test-key"),
             ("BRAINTRUST_APP_URL", "https://braintrust.dev"),
             ("BRAINTRUST_DEFAULT_PROJECT_NAME", "test-project"));
-        var mockClient = new MockBraintrustApiClient();
-        btqlClient ??= new MockBtqlClient();
+        using var mockClient = new StubBraintrustApi(config, btqlRows: btqlRows);
 
         var captured = new List<Activity>();
         using var listener = new ActivityListener
@@ -505,8 +501,7 @@ public class ClassifierTest : IDisposable
         var builder = Eval<string, string>.NewBuilder()
             .Name("classifier-test")
             .Config(config)
-            .ApiClient(mockClient)
-            .BtqlClient(btqlClient)
+            .ApiClient(mockClient.Client)
             .Cases(cases)
             .TaskFunction(taskFn);
 

@@ -84,18 +84,37 @@ public sealed class Braintrust
     /// </summary>
     public static Braintrust Of(BraintrustConfig config, bool autoManageOpenTelemetry = true)
     {
-        var apiClient = DefaultBraintrustApiClient.Of(config);
-        return new Braintrust(config, apiClient, autoManageOpenTelemetry);
+        return new Braintrust(config, BraintrustOpenApiClient.Of(config), autoManageOpenTelemetry);
     }
 
+    /// <summary>
+    /// Create a new Braintrust instance backed by the given api client. Primarily useful for testing.
+    /// </summary>
+    internal static Braintrust Of(
+        BraintrustConfig config, BraintrustOpenApiClient apiClient, bool autoManageOpenTelemetry = false)
+        => new(config, apiClient, autoManageOpenTelemetry);
+
     public BraintrustConfig Config { get; }
-    public IBraintrustApiClient ApiClient { get; }
+
+    /// <summary>
+    /// The client used for all Braintrust API requests.
+    /// </summary>
+    public BraintrustOpenApiClient OpenApiClient => _apiClient;
+
+    /// <summary>
+    /// Use <see cref="OpenApiClient"/> instead.
+    /// </summary>
+    [Obsolete("Use OpenApiClient instead.")]
+    public IBraintrustApiClient ApiClient =>
+        new DefaultBraintrustApiClient(Config, _apiClient, ownsClient: false);
+
+    private readonly BraintrustOpenApiClient _apiClient;
     private volatile OpenTelemetry.Trace.TracerProvider? _tracer;
 
-    private Braintrust(BraintrustConfig config, IBraintrustApiClient apiClient, bool autoManageOpenTelemetry)
+    private Braintrust(BraintrustConfig config, BraintrustOpenApiClient apiClient, bool autoManageOpenTelemetry)
     {
         Config = config ?? throw new ArgumentNullException(nameof(config));
-        ApiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
+        _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
         if (autoManageOpenTelemetry)
         {
             _tracer = Trace.BraintrustTracing.CreateTracerProvider(this.Config);
@@ -105,11 +124,12 @@ public sealed class Braintrust
     /// <summary>
     /// Get the URI to the configured Braintrust org and project.
     /// </summary>
-    public async Task<Uri> GetProjectUriAsync()
-    {
-        var orgAndProject = await ApiClient.GetOrCreateProjectAndOrgInfo().ConfigureAwait(false);
-        return new Uri($"{Config.AppUrl}/app/{orgAndProject.OrgInfo.Name}/p/{orgAndProject.Project.Name}");
-    }
+    /// <remarks>
+    /// Use <see cref="Uri.AbsoluteUri"/> when turning the result into a string:
+    /// <see cref="Uri.ToString"/> unescapes the path, which breaks the link for org or project
+    /// names containing a space.
+    /// </remarks>
+    public Task<Uri> GetProjectUriAsync() => _apiClient.FetchProjectUriAsync();
 
     /// <summary>
     /// Add Braintrust to existing OpenTelemetry TracerProviderBuilder.
@@ -136,6 +156,54 @@ public sealed class Braintrust
     }
 
     /// <summary>
+    /// Fetch a dataset by name from the configured default project.
+    ///
+    /// Rows are fetched lazily, so this only resolves the project and the dataset id. Each case's
+    /// <c>input</c> and <c>expected</c> are deserialized into <typeparamref name="TInput"/> and
+    /// <typeparamref name="TOutput"/> as they are read.
+    ///
+    /// Handing the result to <see cref="EvalBuilder{TInput,TOutput}"/> links the experiment to
+    /// this dataset and each eval row back to the record it came from.
+    /// </summary>
+    /// <param name="datasetName">Name of the dataset within the configured project.</param>
+    /// <param name="version">
+    /// Transaction id to pin to. Null resolves the latest version at the start of each
+    /// enumeration.
+    /// </param>
+    /// <param name="inputConverter">
+    /// Reads a row's <c>input</c>. Null deserializes it into <typeparamref name="TInput"/>.
+    /// </param>
+    /// <param name="expectedConverter">
+    /// Reads a row's <c>expected</c>, which the dataset schema leaves optional. Null
+    /// deserializes it into <typeparamref name="TOutput"/>, so a dataset with rows that have no
+    /// <c>expected</c> needs a converter here to be read at all.
+    /// </param>
+    public async Task<Eval.IDataset<TInput, TOutput>> FetchDatasetAsync<TInput, TOutput>(
+        string datasetName,
+        string? version = null,
+        Func<System.Text.Json.JsonElement, TInput>? inputConverter = null,
+        Func<System.Text.Json.JsonElement, TOutput>? expectedConverter = null)
+        where TInput : notnull
+        where TOutput : notnull
+    {
+        // Handles both BRAINTRUST_DEFAULT_PROJECT_ID and _NAME. This is a read, so a name that
+        // matches no project fails rather than creating one.
+        var project = await _apiClient
+            .FetchProjectAsync(createIfMissing: false)
+            .ConfigureAwait(false);
+
+        // By id, not name: a name is only unique within an org, and an api key can span orgs.
+        return await Eval.Dataset.FetchByProjectIdAsync<TInput, TOutput>(
+            // Reuses this instance's caller-owned client, and so its connection pool.
+            _apiClient,
+            project.Id.ToString(),
+            datasetName,
+            version,
+            inputConverter,
+            expectedConverter).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Create a new eval builder.
     /// </summary>
     public Eval.Eval<TInput, TOutput>.Builder EvalBuilder<TInput, TOutput>()
@@ -144,6 +212,6 @@ public sealed class Braintrust
     {
         return Eval.Eval<TInput, TOutput>.NewBuilder()
             .Config(Config)
-            .ApiClient(ApiClient);
+            .ApiClient(_apiClient);
     }
 }

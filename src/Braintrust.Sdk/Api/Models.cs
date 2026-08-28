@@ -1,11 +1,13 @@
 using System.Text.Json.Serialization;
 using Braintrust.Sdk.Git;
+using Generated = Braintrust.Sdk.Api.Generated;
 
 namespace Braintrust.Sdk.Api;
 
 /// <summary>
-/// Represents a Braintrust project.
+/// Use <see cref="Generated.Project"/> through <see cref="BraintrustOpenApiClient.Api"/> instead.
 /// </summary>
+[Obsolete("Use BraintrustOpenApiClient.Api and Braintrust.Sdk.Api.Generated.Project instead.")]
 public record Project(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("name")] string Name,
@@ -15,8 +17,9 @@ public record Project(
 );
 
 /// <summary>
-/// Represents a Braintrust experiment.
+/// Use <see cref="Generated.Experiment"/> through <see cref="BraintrustOpenApiClient.Api"/> instead.
 /// </summary>
+[Obsolete("Use BraintrustOpenApiClient.Api and Braintrust.Sdk.Api.Generated.Experiment instead.")]
 public record Experiment(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("project_id")] string ProjectId,
@@ -29,31 +32,41 @@ public record Experiment(
 );
 
 /// <summary>
-/// Represents organization information.
+/// Use <see cref="Generated.Organization"/> through <see cref="BraintrustOpenApiClient.Api"/>
+/// instead.
 /// </summary>
+[Obsolete("Use BraintrustOpenApiClient.Api and Braintrust.Sdk.Api.Generated.Organization instead.")]
 public record OrganizationInfo(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("name")] string Name
 );
 
 /// <summary>
-/// Combined organization and project information.
+/// Use <see cref="Generated.Organization"/> and <see cref="Generated.Project"/> through
+/// <see cref="BraintrustOpenApiClient.Api"/> instead.
 /// </summary>
+[Obsolete("Use BraintrustOpenApiClient.Api with Braintrust.Sdk.Api.Generated.Organization and Project instead.")]
 public record OrganizationAndProjectInfo(
     OrganizationInfo OrgInfo,
     Project Project
 );
 
 /// <summary>
-/// Request to create a project.
+/// Use <see cref="Generated.CreateProject"/> with
+/// <see cref="Generated.IBraintrustGeneratedApiClient.PostProjectAsync(Generated.CreateProject, CancellationToken)"/>
+/// instead.
 /// </summary>
+[Obsolete("Use BraintrustOpenApiClient.Api.PostProjectAsync with Braintrust.Sdk.Api.Generated.CreateProject instead.")]
 public record CreateProjectRequest(
     [property: JsonPropertyName("name")] string Name
 );
 
 /// <summary>
-/// Request to create an experiment.
+/// Use <see cref="Generated.CreateExperiment"/> with
+/// <see cref="Generated.IBraintrustGeneratedApiClient.PostExperimentAsync(Generated.CreateExperiment, CancellationToken)"/>
+/// instead.
 /// </summary>
+[Obsolete("Use BraintrustOpenApiClient.Api.PostExperimentAsync with Braintrust.Sdk.Api.Generated.CreateExperiment instead.")]
 public record CreateExperimentRequest(
     [property: JsonPropertyName("project_id")] string ProjectId,
     [property: JsonPropertyName("name")] string Name,
@@ -62,18 +75,4 @@ public record CreateExperimentRequest(
     [property: JsonPropertyName("repo_info")] RepoInfo? RepoInfo = null,
     [property: JsonPropertyName("tags")] IReadOnlyList<string>? Tags = null,
     [property: JsonPropertyName("metadata")] IReadOnlyDictionary<string, object>? Metadata = null
-);
-
-/// <summary>
-/// Login request with API key.
-/// </summary>
-internal record LoginRequest(
-    [property: JsonPropertyName("token")] string Token
-);
-
-/// <summary>
-/// Response from login endpoint.
-/// </summary>
-internal record LoginResponse(
-    [property: JsonPropertyName("org_info")] List<OrganizationInfo> OrgInfo
 );

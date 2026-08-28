@@ -14,8 +14,8 @@ public partial class BraintrustGeneratedApiClient
     {
         // The generator writes every unset optional member as an explicit null, and the API
         // validates nullability strictly: creating an automation whose action never mentions
-        // formatting_prompt was rejected with "Expected string, received null". Omitting
-        // nulls is also what the SDK's hand-rolled client did.
+        // formatting_prompt was rejected with "Expected string, received null", so unset
+        // members are omitted instead.
         //
         // The trade-off is that an explicit null can no longer be sent to clear a field on
         // PATCH. Braintrust's PATCH endpoints treat an absent field as "leave alone" and

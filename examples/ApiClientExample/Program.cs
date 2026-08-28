@@ -32,10 +32,10 @@ class Program
 
     static async Task Main(string[] args)
     {
-        // DefaultBraintrustApiClient is the SDK's own client; its Api property is the
+        // BraintrustOpenApiClient is the SDK's own client; its Api property is the
         // generated client, already wired up with the base URL, bearer auth and timeout
         // from the config.
-        using var client = DefaultBraintrustApiClient.Of(BraintrustConfig.FromEnvironment());
+        using var client = BraintrustOpenApiClient.Of(BraintrustConfig.FromEnvironment());
         Generated.IBraintrustGeneratedApiClient api = client.Api;
 
         // Pick the project to read from, and resolve its org for the banner.

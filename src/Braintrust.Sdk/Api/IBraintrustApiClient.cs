@@ -1,8 +1,9 @@
 namespace Braintrust.Sdk.Api;
 
 /// <summary>
-/// Interface for Braintrust API client operations.
+/// Use <see cref="BraintrustOpenApiClient.Api"/> and the generated OpenAPI models instead.
 /// </summary>
+[Obsolete("Use BraintrustOpenApiClient.Api and the Braintrust.Sdk.Api.Generated models instead.")]
 public interface IBraintrustApiClient
 {
     /// <summary>
