@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenAI.Chat;
-using OpenTelemetry.Trace;
 
 namespace Braintrust.Sdk.OpenAI;
 
@@ -71,7 +70,7 @@ internal sealed class InstrumentedChatClient : ChatClient
             if (activity != null)
             {
                 activity.SetStatus(ActivityStatusCode.Error, ex.Message);
-                activity.RecordException(ex);
+                activity.AddException(ex);
             }
             // intentionally re-throwing original exception
             throw;
@@ -114,7 +113,7 @@ internal sealed class InstrumentedChatClient : ChatClient
             if (activity != null)
             {
                 activity.SetStatus(ActivityStatusCode.Error, ex.Message);
-                activity.RecordException(ex);
+                activity.AddException(ex);
             }
             // intentionally re-throwing original exception
             throw;
