@@ -28,7 +28,7 @@
     <!-- braintrust-openapi ref (SHA or tag) - mirrors gradle.properties in sdk-java.
          Pinned rather than floating so builds are reproducible and the ref-in-path
          spec cache below stays valid; bump it to take new API surface. -->
-    <BraintrustOpenApiRef>014842adca330b8385378a9fef94d1873b29338f</BraintrustOpenApiRef>
+    <BraintrustOpenApiRef>8d6e24ce78d8e33cbf9ba5f35d2fbc71749306d7</BraintrustOpenApiRef>
   </PropertyGroup>
 
   <ItemGroup>
