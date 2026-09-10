@@ -4,9 +4,10 @@
 #
 # The CANONICAL release path is the gated GitHub Actions workflow:
 #   Actions -> Release -> Run workflow
-# That workflow runs in the protected `release` environment, which
-# requires reviewer approval and holds the NuGet publish secrets. See
-# CONTRIBUTING.md ("Releasing") for the end-to-end flow.
+# Its publish job runs in the protected `release` environment, which
+# requires reviewer approval and holds the NuGet publish secrets. Input
+# validation, tests, and package creation finish before approval is requested.
+# See CONTRIBUTING.md ("Releasing") for the end-to-end flow.
 #
 # This script is kept as a local fallback for testing tag creation
 # (e.g. with --skip-push) and for emergencies where the Actions UI is

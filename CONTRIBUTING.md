@@ -15,29 +15,33 @@ from a local checkout.
    - `version` — semver tag like `v1.2.3` (or `v1.2.3-beta.1` for a
      prerelease).
    - `sha` — the full 40-char commit SHA from step 1.
-4. Click **Run workflow**. The job will pause on the protected
+4. Click **Run workflow**. Before requesting approval, the workflow
+   validates the inputs, verifies the SHA is reachable from
+   `origin/main`, runs CI on the exact commit that will ship, and packs
+   all NuGet packages.
+5. After those checks pass, the publish job pauses on the protected
    `release` environment until a required reviewer approves it.
-5. After approval, the workflow validates the inputs, verifies the SHA
-   is reachable from `origin/main`, runs CI on the pinned SHA, creates
-   and pushes the annotated tag `vX.Y.Z` pointing at that SHA, checks
-   out the tag and re-runs CI, packs all NuGet packages, creates the
-   GitHub Release with the `.nupkg`/`.snupkg` files attached, and
-   publishes to NuGet.org via OIDC trusted publishing.
+6. After approval, the workflow creates and pushes the annotated tag
+   `vX.Y.Z` pointing at the tested commit, creates the GitHub Release
+   with the tested `.nupkg`/`.snupkg` files attached, and publishes
+   those packages to NuGet.org via OIDC trusted publishing.
 
 ### Why the SHA is required (and not just a branch name)
 
-The workflow pauses at the environment approval gate. During that
-pause, new commits can land on `main`. If we tagged "whatever `main`
-is right now" at publish time, those just-landed commits would be
-silently included in the release.
+The publish job pauses at the environment approval gate only after the
+exact release commit has passed CI and its NuGet packages have been
+built. During that pause, new commits can land on `main`. If we tagged
+"whatever `main` is right now" at publish time, those just-landed
+commits would be silently included in the release.
 
 Requiring the releaser to pin an explicit commit SHA at dispatch time
-makes the released contents reviewable: what gets approved is exactly
-what ships, regardless of how long the approval takes.
+makes the released contents reviewable: what gets approved is the
+tested commit and packages that will ship, regardless of how long the
+approval takes.
 
 ### Approval gate and secrets
 
-The release job runs in one of two GitHub Environments depending on
+The publish job runs in one of two GitHub Environments depending on
 whether the version is a stable release or a prerelease:
 
 - **`release`** — used for stable versions (e.g. `v1.2.3`).
@@ -50,13 +54,15 @@ whether the version is a stable release or a prerelease:
   secrets** but **no required reviewers**, so prerelease iteration is
   fast.
 
-The workflow picks the environment dynamically from the `version`
-input via `contains(inputs.version, '-')`. The input validation step
-enforces the semver shape `vX.Y.Z(-prerelease)?`, so the check is
-safe: stable versions never contain `-`, prereleases always do.
+The workflow picks the publish environment dynamically from the
+`version` input via `contains(inputs.version, '-')`. The prerequisite
+validation job enforces the semver shape `vX.Y.Z(-prerelease)?`, so the
+check is safe: stable versions never contain `-`, prereleases always
+do.
 
 Secrets are scoped to each environment, so they are only accessible to
-jobs that have entered that environment.
+the publish job after it has entered that environment. The preflight
+job does not have access to publish secrets.
 
 If you are cutting a stable release and forget to leave off the
 prerelease suffix, the workflow will silently take the ungated path.
@@ -71,11 +77,12 @@ the tag already exists.
 
 On re-run, the workflow:
 
-- Detects the existing tag and skips the tag-creation step.
-- Re-runs CI at the tag.
-- Re-packs all NuGet packages.
-- Updates the existing GitHub Release and re-uploads assets with
-  `--clobber` so partial uploads from the prior run are replaced.
+- Detects the existing tag, then re-runs CI and re-packs all NuGet
+  packages from that tag before requesting approval.
+- Skips the tag-creation step after approval.
+- Updates the existing GitHub Release and re-uploads the newly tested
+  assets with `--clobber` so partial uploads from the prior run are
+  replaced.
 - Re-pushes to NuGet.org with `--skip-duplicate`, so packages that
   already made it through on the previous attempt are not treated as
   failures.

@@ -4,13 +4,14 @@
 # commit SHA to release, and this will:
 #   1. Validate the version (semver) and the SHA.
 #   2. Verify the SHA is reachable from origin/main.
-#   3. Run the full CI gate (format, build, test) on the pinned SHA.
-#   4. Create and push the annotated tag vX.Y.Z pointing at the SHA
+#   3. Run the full CI gate (release config, format, build, test) on the
+#      exact commit that will be released.
+#   4. Pack all NuGet packages and save them as a workflow artifact.
+#   5. Request approval for stable releases.
+#   6. Create and push the annotated tag vX.Y.Z pointing at the tested SHA
 #      (using GITHUB_TOKEN).
-#   5. Check out the tag and re-run the CI gate at the tag.
-#   6. Pack all NuGet packages with the released version.
-#   7. Create the GitHub Release and upload the .nupkg / .snupkg files.
-#   8. Publish to NuGet.org via OIDC trusted publishing.
+#   7. Create the GitHub Release and upload the tested .nupkg / .snupkg files.
+#   8. Publish the tested packages to NuGet.org via OIDC trusted publishing.
 #
 # The releaser must supply an explicit commit SHA (not a branch name) so
 # that commits which land on main during the environment approval gate
@@ -22,15 +23,18 @@
 # uploads use --clobber, and dotnet nuget push uses --skip-duplicate, so
 # the workflow is safe to re-run.
 #
-# Environment gating:
+# Approval gating:
 #
-#   - Stable releases (e.g. v1.2.3) run in the protected `release`
+#   - Validation, CI, and package creation run before either GitHub
+#     Environment is entered, so a reviewer is only asked to approve a
+#     release that has already passed its preflight checks.
+#   - Stable releases (e.g. v1.2.3) publish through the protected `release`
 #     GitHub Environment, which requires reviewer approval before any
 #     tag is pushed or any artifact is published.
-#   - Prereleases (any version containing `-`, e.g. v1.2.3-beta.1) run
-#     in the `release-prerelease` Environment, which holds the same
-#     publish secrets but does NOT require reviewer approval. This
-#     keeps iteration on prereleases fast.
+#   - Prereleases (any version containing `-`, e.g. v1.2.3-beta.1) publish
+#     through the `release-prerelease` Environment, which holds the same
+#     publish secrets but does NOT require reviewer approval. This keeps
+#     iteration on prereleases fast.
 #
 # Both environments must be configured in repo settings (Settings ->
 # Environments) with the NuGet publish secrets (NUGET_USER). Only the
@@ -49,120 +53,112 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write
-  id-token: write  # Required for NuGet OIDC trusted publishing
-
 jobs:
-  release:
-    name: Release
+  validate:
+    name: Validate, test, and pack
     # we want to run ubuntu-latest but we'll pin to a specific version so workflow is reproducable
     runs-on: ubuntu-24.04
-    # Gate stable releases behind the protected `release` GitHub
-    # Environment (required reviewers). Prereleases -- any semver with
-    # a `-` suffix, e.g. v1.2.3-beta.1 -- run in `release-prerelease`,
-    # which holds the same publish secrets but has no approval gate so
-    # iteration on prereleases stays fast.
-    #
-    # The validation step below enforces the semver shape
-    # vX.Y.Z(-prerelease)?, so this `contains` check is safe: stable
-    # versions never contain `-`, prereleases always do.
-    environment: ${{ contains(inputs.version, '-') && 'release-prerelease' || 'release' }}
+    permissions:
+      contents: read
+    outputs:
+      tag-exists: ${{ steps.release-state.outputs.exists }}
+      release-sha: ${{ steps.release-state.outputs.release-sha }}
+      nupkg: ${{ steps.find-artifacts.outputs.nupkg }}
+      snupkg: ${{ steps.find-artifacts.outputs.snupkg }}
+      openai_nupkg: ${{ steps.find-artifacts.outputs.openai_nupkg }}
+      openai_snupkg: ${{ steps.find-artifacts.outputs.openai_snupkg }}
+      anthropic_nupkg: ${{ steps.find-artifacts.outputs.anthropic_nupkg }}
+      anthropic_snupkg: ${{ steps.find-artifacts.outputs.anthropic_snupkg }}
+      agentframework_nupkg: ${{ steps.find-artifacts.outputs.agentframework_nupkg }}
+      agentframework_snupkg: ${{ steps.find-artifacts.outputs.agentframework_snupkg }}
+      azureopenai_nupkg: ${{ steps.find-artifacts.outputs.azureopenai_nupkg }}
+      azureopenai_snupkg: ${{ steps.find-artifacts.outputs.azureopenai_snupkg }}
     steps:
       - name: Validate inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          INPUT_SHA: ${{ inputs.sha }}
         run: |
-          V="${{ inputs.version }}"
-          if [[ ! "$V" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
             echo "Error: version must be semver (e.g. v1.2.3 or v1.2.3-beta.1)" >&2
             exit 1
           fi
-          SHA="${{ inputs.sha }}"
-          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Error: sha must be a full 40-character lowercase commit SHA. Got: '$SHA'" >&2
+          if [[ ! "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Error: sha must be a full 40-character lowercase commit SHA. Got: '$INPUT_SHA'" >&2
             echo "Tip: copy the SHA from the commit page on GitHub (use the 'Copy full SHA' button)." >&2
             exit 1
           fi
 
-      - name: Checkout
+      - name: Checkout chosen commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
 
       - name: Verify SHA is reachable from main
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
         run: |
-          SHA="${{ inputs.sha }}"
           git fetch origin main --quiet
-          if ! git merge-base --is-ancestor "$SHA" origin/main; then
-            echo "Error: commit $SHA is not an ancestor of origin/main." >&2
+          if ! git merge-base --is-ancestor "$INPUT_SHA" origin/main; then
+            echo "Error: commit $INPUT_SHA is not an ancestor of origin/main." >&2
             echo "Releases must be cut from commits that have landed on main." >&2
             exit 1
           fi
-          echo "Commit $SHA is reachable from origin/main."
+          echo "Commit $INPUT_SHA is reachable from origin/main."
 
-      - name: Determine whether tag already exists
-        id: tag-state
+      - name: Resolve the exact release commit
+        id: release-state
+        env:
+          VERSION: ${{ inputs.version }}
+          INPUT_SHA: ${{ inputs.sha }}
         run: |
-          TAG="${{ inputs.version }}"
           git fetch --tags --quiet
-          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            RELEASE_SHA=$(git rev-list -n 1 "refs/tags/$VERSION")
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Tag '$TAG' already exists; will publish from the existing tag."
-          elif git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Tag '$TAG' exists on origin but not locally; fetching."
-            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+            echo "Tag '$VERSION' already exists; validating and packing commit $RELEASE_SHA."
           else
+            RELEASE_SHA="$INPUT_SHA"
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Tag '$TAG' does not exist yet; will create at $SHA."
+            echo "Tag '$VERSION' does not exist yet; validating and packing commit $RELEASE_SHA."
           fi
+          echo "release-sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create local candidate tag
+        if: steps.release-state.outputs.exists == 'false'
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ steps.release-state.outputs.release-sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION" "$RELEASE_SHA"
+
+      - name: Checkout exact release commit
+        env:
+          RELEASE_SHA: ${{ steps.release-state.outputs.release-sha }}
+        run: git checkout --detach "$RELEASE_SHA"
 
       - name: Set up .NET 8.0
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore dependencies (pre-tag, on chosen ref)
-        if: steps.tag-state.outputs.exists == 'false'
+      - name: Verify release configuration
+        run: ./scripts/verify-release-config.sh
+
+      - name: Restore dependencies
         run: dotnet restore
 
-      - name: Check code formatting (pre-tag, on chosen ref)
-        if: steps.tag-state.outputs.exists == 'false'
+      - name: Check code formatting
         run: dotnet format --verify-no-changes
 
-      - name: Run CI (pre-tag, on chosen ref)
-        if: steps.tag-state.outputs.exists == 'false'
-        run: |
-          dotnet build --no-restore --configuration Release
-          dotnet test --no-build --configuration Release --verbosity normal
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
 
-      - name: Configure git identity
-        if: steps.tag-state.outputs.exists == 'false'
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Create and push tag
-        if: steps.tag-state.outputs.exists == 'false'
-        run: |
-          TAG="${{ inputs.version }}"
-          SHA="${{ inputs.sha }}"
-          git tag -a "$TAG" -m "Release $TAG" "$SHA"
-          git push origin "$TAG"
-
-      - name: Checkout tag
-        run: git checkout "${{ inputs.version }}"
-
-      - name: Restore dependencies (at tag)
-        run: dotnet restore
-
-      - name: Check code formatting (at tag)
-        run: dotnet format --verify-no-changes
-
-      - name: Run CI (at tag)
-        run: |
-          dotnet build --no-restore --configuration Release
-          dotnet test --no-build --configuration Release --verbosity normal
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release --verbosity normal
 
       - name: Pack NuGet packages
         run: |
@@ -218,6 +214,18 @@ jobs:
           AZUREOPENAI_NUPKG=$(find ./artifacts -name "Braintrust.Sdk.AzureOpenAI.${VERSION}.nupkg" | head -1)
           AZUREOPENAI_SNUPKG=$(find ./artifacts -name "Braintrust.Sdk.AzureOpenAI.${VERSION}.snupkg" | head -1)
 
+          for package in \
+            "$NUPKG" \
+            "$OPENAI_NUPKG" \
+            "$ANTHROPIC_NUPKG" \
+            "$AGENTFRAMEWORK_NUPKG" \
+            "$AZUREOPENAI_NUPKG"; do
+            if [[ -z "$package" || ! -f "$package" ]]; then
+              echo "Error: expected NuGet package was not produced: '$package'" >&2
+              exit 1
+            fi
+          done
+
           echo "nupkg=$NUPKG" >> $GITHUB_OUTPUT
           if [[ -n "$SNUPKG" ]]; then
             echo "snupkg=$SNUPKG" >> $GITHUB_OUTPUT
@@ -261,6 +269,73 @@ jobs:
             echo "  AzureOpenAI symbols package: $AZUREOPENAI_SNUPKG"
           fi
 
+      - name: Save tested release packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-packages
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          if-no-files-found: error
+
+  release:
+    name: Approve and publish
+    needs: validate
+    # we want to run ubuntu-latest but we'll pin to a specific version so workflow is reproducable
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+      id-token: write  # Required for NuGet OIDC trusted publishing
+    # Gate only publishing behind the protected `release` GitHub
+    # Environment (required reviewers). Validation, tests, and packaging
+    # have already succeeded in the `validate` job.
+    environment: ${{ contains(inputs.version, '-') && 'release-prerelease' || 'release' }}
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.validate.outputs.release-sha }}
+          fetch-depth: 0
+
+      - name: Create tag or verify existing tag
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ needs.validate.outputs.release-sha }}
+          TAG_EXISTED: ${{ needs.validate.outputs.tag-exists }}
+        run: |
+          git fetch --tags --quiet
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            TAG_SHA=$(git rev-list -n 1 "refs/tags/$VERSION")
+            if [[ "$TAG_SHA" != "$RELEASE_SHA" ]]; then
+              echo "Error: tag '$VERSION' changed after validation." >&2
+              echo "Validated commit: $RELEASE_SHA" >&2
+              echo "Current tag commit: $TAG_SHA" >&2
+              exit 1
+            fi
+            echo "Tag '$VERSION' already points at the validated commit; skipping creation."
+          else
+            if [[ "$TAG_EXISTED" == "true" ]]; then
+              echo "Error: tag '$VERSION' was deleted after validation; refusing to recreate it." >&2
+              exit 1
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$VERSION" -m "Release $VERSION" "$RELEASE_SHA"
+            git push origin "$VERSION"
+          fi
+
+      - name: Set up .NET 8.0
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download tested release packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-packages
+          path: ./artifacts
+
       - name: Create or update GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -278,16 +353,16 @@ jobs:
 
           # Upload artifacts if they exist, clobbering any partial uploads from a prior run.
           for artifact in \
-            "${{ steps.find-artifacts.outputs.nupkg }}" \
-            "${{ steps.find-artifacts.outputs.snupkg }}" \
-            "${{ steps.find-artifacts.outputs.openai_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.openai_snupkg }}" \
-            "${{ steps.find-artifacts.outputs.anthropic_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.anthropic_snupkg }}" \
-            "${{ steps.find-artifacts.outputs.agentframework_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.agentframework_snupkg }}" \
-            "${{ steps.find-artifacts.outputs.azureopenai_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.azureopenai_snupkg }}"; do
+            "${{ needs.validate.outputs.nupkg }}" \
+            "${{ needs.validate.outputs.snupkg }}" \
+            "${{ needs.validate.outputs.openai_nupkg }}" \
+            "${{ needs.validate.outputs.openai_snupkg }}" \
+            "${{ needs.validate.outputs.anthropic_nupkg }}" \
+            "${{ needs.validate.outputs.anthropic_snupkg }}" \
+            "${{ needs.validate.outputs.agentframework_nupkg }}" \
+            "${{ needs.validate.outputs.agentframework_snupkg }}" \
+            "${{ needs.validate.outputs.azureopenai_nupkg }}" \
+            "${{ needs.validate.outputs.azureopenai_snupkg }}"; do
             if [[ -n "$artifact" && -f "$artifact" ]]; then
               gh release upload "$TAG" "$artifact" --clobber
             fi
@@ -302,11 +377,11 @@ jobs:
       - name: Publish to NuGet.org
         run: |
           for NUPKG in \
-            "${{ steps.find-artifacts.outputs.nupkg }}" \
-            "${{ steps.find-artifacts.outputs.openai_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.anthropic_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.agentframework_nupkg }}" \
-            "${{ steps.find-artifacts.outputs.azureopenai_nupkg }}"; do
+            "${{ needs.validate.outputs.nupkg }}" \
+            "${{ needs.validate.outputs.openai_nupkg }}" \
+            "${{ needs.validate.outputs.anthropic_nupkg }}" \
+            "${{ needs.validate.outputs.agentframework_nupkg }}" \
+            "${{ needs.validate.outputs.azureopenai_nupkg }}"; do
             if [[ -z "$NUPKG" || ! -f "$NUPKG" ]]; then
               echo "Error: NuGet package not found: $NUPKG"
               exit 1
