@@ -1,3 +1,5 @@
+using Braintrust.Sdk.Trace;
+
 namespace Braintrust.Sdk.Config;
 
 public sealed record SpanOriginEnvironment(string Type, string? Name = null);
@@ -29,12 +31,33 @@ public sealed class BraintrustConfig : BaseConfig
     public TimeSpan RequestTimeout { get; }
     public SpanOriginEnvironment? Environment { get; }
 
+    /// <summary>
+    /// Ordered registration snapshot. Hooks run synchronously on each detached outgoing span.
+    /// </summary>
+    public IReadOnlyList<ISpanCustomizer> SpanCustomizers { get; }
+
     public static BraintrustConfig FromEnvironment()
     {
         return Of();
     }
 
+    public static BraintrustConfig FromEnvironment(IEnumerable<ISpanCustomizer> spanCustomizers)
+    {
+        return Of(spanCustomizers);
+    }
+
     public static BraintrustConfig Of(params (string Key, string? Value)[] envOverrides)
+    {
+        return Of(Array.Empty<ISpanCustomizer>(), envOverrides);
+    }
+
+    /// <summary>
+    /// Creates a configuration with an immutable copy of the ordered customizer registrations.
+    /// Customizer instances themselves are not cloned and must be safe for export threads.
+    /// </summary>
+    public static BraintrustConfig Of(
+        IEnumerable<ISpanCustomizer> spanCustomizers,
+        params (string Key, string? Value)[] envOverrides)
     {
         var overridesMap = new Dictionary<string, string?>();
 
@@ -43,11 +66,21 @@ public sealed class BraintrustConfig : BaseConfig
             overridesMap[key] = value;
         }
 
-        return new BraintrustConfig(overridesMap);
+        return new BraintrustConfig(overridesMap, spanCustomizers);
     }
 
-    private BraintrustConfig(IDictionary<string, string?> envOverrides) : base(envOverrides)
+    private BraintrustConfig(
+        IDictionary<string, string?> envOverrides,
+        IEnumerable<ISpanCustomizer> spanCustomizers) : base(envOverrides)
     {
+        ArgumentNullException.ThrowIfNull(spanCustomizers);
+        var customizers = spanCustomizers.ToArray();
+        if (customizers.Any(customizer => customizer is null))
+        {
+            throw new ArgumentException("Span customizers cannot contain null.", nameof(spanCustomizers));
+        }
+        SpanCustomizers = Array.AsReadOnly(customizers);
+
         try
         {
             _braintrustEnvSearchRoot = Directory.GetCurrentDirectory();
