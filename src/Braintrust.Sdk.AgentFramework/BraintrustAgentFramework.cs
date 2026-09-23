@@ -86,56 +86,14 @@ public static class BraintrustAgentFramework
     }
 
     /// <summary>
-    /// Adds Braintrust tracing middleware to a ChatClientBuilder.
-    /// Traces both LLM calls and function/tool invocations.
-    /// Convenience method that combines UseBraintrustLLMTracing and UseBraintrustFunctionTracing.
+    /// Adds Braintrust tracing to the agent's existing function invocation pipeline.
+    /// Does not add a FunctionInvokingChatClient or change tool execution settings.
     /// </summary>
-    /// <param name="builder">The chat client builder</param>
-    /// <param name="captureMessageContent">Whether to capture message content in telemetry (default: true)</param>
+    /// <param name="builder">The agent builder</param>
     /// <param name="captureToolArguments">Whether to capture function arguments and results (default: true)</param>
     /// <returns>The builder for method chaining</returns>
-    public static ChatClientBuilder UseBraintrustTracing(
-        this ChatClientBuilder builder,
-        bool captureMessageContent = true,
-        bool captureToolArguments = true)
-    {
-        var braintrust = Braintrust.Get();
-        var activitySource = braintrust.GetActivitySource();
-        return builder.UseBraintrustTracing(activitySource, captureMessageContent, captureToolArguments);
-    }
-
-    /// <summary>
-    /// Adds both LLM-level and function-level Braintrust tracing using a custom ActivitySource.
-    /// Convenience method that combines UseBraintrustLLMTracing and UseBraintrustFunctionTracing.
-    /// </summary>
-    /// <param name="builder">The chat client builder</param>
-    /// <param name="activitySource">The ActivitySource for creating spans</param>
-    /// <param name="captureMessageContent">Whether to capture message content in telemetry (default: true)</param>
-    /// <param name="captureToolArguments">Whether to capture function arguments and results (default: true)</param>
-    /// <returns>The builder for method chaining</returns>
-    public static ChatClientBuilder UseBraintrustTracing(
-        this ChatClientBuilder builder,
-        ActivitySource activitySource,
-        bool captureMessageContent = true,
-        bool captureToolArguments = true)
-    {
-        // Order matters: LLM tracing must be applied after (i.e. inner to) function tracing so that
-        // each individual LLM call gets its own span, rather than the entire tool-call loop
-        // (first LLM call + tool execution + second LLM call) being wrapped in one span.
-        return builder
-            .UseBraintrustFunctionTracing(activitySource, captureToolArguments)
-            .UseBraintrustLLMTracing(activitySource, captureMessageContent);
-    }
-
-    /// <summary>
-    /// Adds Braintrust function call tracing to a ChatClientBuilder.
-    /// Uses UseFunctionInvocation under the hood, wrapping each tool/function call with a tracing span.
-    /// </summary>
-    /// <param name="builder">The chat client builder</param>
-    /// <param name="captureToolArguments">Whether to capture function arguments and results (default: true)</param>
-    /// <returns>The builder for method chaining</returns>
-    public static ChatClientBuilder UseBraintrustFunctionTracing(
-        this ChatClientBuilder builder,
+    public static AIAgentBuilder UseBraintrustFunctionTracing(
+        this AIAgentBuilder builder,
         bool captureToolArguments = true)
     {
         var braintrust = Braintrust.Get();
@@ -144,14 +102,14 @@ public static class BraintrustAgentFramework
     }
 
     /// <summary>
-    /// Adds Braintrust function call tracing using a custom ActivitySource.
+    /// Adds Braintrust tracing to the agent's existing function invocation pipeline using a custom ActivitySource.
     /// </summary>
-    /// <param name="builder">The chat client builder</param>
+    /// <param name="builder">The agent builder</param>
     /// <param name="activitySource">The ActivitySource for creating spans</param>
     /// <param name="captureToolArguments">Whether to capture function arguments and results (default: true)</param>
     /// <returns>The builder for method chaining</returns>
-    public static ChatClientBuilder UseBraintrustFunctionTracing(
-        this ChatClientBuilder builder,
+    public static AIAgentBuilder UseBraintrustFunctionTracing(
+        this AIAgentBuilder builder,
         ActivitySource activitySource,
         bool captureToolArguments = true)
     {
@@ -160,11 +118,6 @@ public static class BraintrustAgentFramework
         if (activitySource == null)
             throw new ArgumentNullException(nameof(activitySource));
 
-        return builder.UseFunctionInvocation(configure: client =>
-        {
-            var defaultInvoker = client.FunctionInvoker;
-            client.FunctionInvoker = BraintrustFunctionMiddleware.CreateInvoker(
-                activitySource, captureToolArguments, defaultInvoker);
-        });
+        return builder.Use(BraintrustFunctionMiddleware.CreateCallback(activitySource, captureToolArguments));
     }
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Braintrust.Sdk.AgentFramework;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Xunit;
 
@@ -162,7 +163,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseBraintrustTracing_CreatesBothLlmAndFunctionSpans()
+    public async Task Tracing_CreatesBothLlmAndFunctionSpans()
     {
         // Arrange
         var activities = new List<Activity>();
@@ -177,16 +178,14 @@ public class ChatClientMiddlewareTests
         var getWeather = AIFunctionFactory.Create((string city) => $"Sunny in {city}", "GetWeather");
         var mockClient = new ToolCallingChatClient(getWeather);
         var tracedClient = new ChatClientBuilder(mockClient)
-            .UseBraintrustTracing(TestSource)
+            .UseBraintrustLLMTracing(TestSource)
+            .Build();
+        var agent = new ChatClientAgent(tracedClient, tools: [getWeather]).AsBuilder()
+            .UseBraintrustFunctionTracing(TestSource)
             .Build();
 
         // Act
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.User, "What's the weather in Seattle?")
-        };
-        var options = new ChatOptions { Tools = [getWeather] };
-        await tracedClient.GetResponseAsync(messages, options);
+        await agent.RunAsync("What's the weather in Seattle?");
 
         // Assert - should have both LLM and function spans
         var llmActivities = activities.Where(a => a.OperationName == "Chat Completion").ToList();
@@ -198,7 +197,7 @@ public class ChatClientMiddlewareTests
     }
 
     [Fact]
-    public async Task UseBraintrustTracing_ToolCallLoop_CapturesCorrectInputOutputPerLlmSpan()
+    public async Task Tracing_ToolCallLoop_CapturesCorrectInputOutputPerLlmSpan()
     {
         // End-to-end test that verifies the input/output captured on each LLM span
         // across a full tool-call loop mirrors what was actually sent/received:
@@ -227,12 +226,13 @@ public class ChatClientMiddlewareTests
         var getWeather = AIFunctionFactory.Create((string city) => $"Sunny in {city}", "GetWeather");
         var mockClient = new ToolCallingChatClient(getWeather);
         var tracedClient = new ChatClientBuilder(mockClient)
-            .UseBraintrustTracing(TestSource)
+            .UseBraintrustLLMTracing(TestSource)
             .Build();
 
-        var messages = new List<ChatMessage> { new(ChatRole.User, "What's the weather in Seattle?") };
-        var options = new ChatOptions { Tools = [getWeather] };
-        await tracedClient.GetResponseAsync(messages, options);
+        var agent = new ChatClientAgent(tracedClient, tools: [getWeather]).AsBuilder()
+            .UseBraintrustFunctionTracing(TestSource)
+            .Build();
+        await agent.RunAsync("What's the weather in Seattle?");
 
         var llmSpans = activities
             .Where(a => a.OperationName == "Chat Completion")

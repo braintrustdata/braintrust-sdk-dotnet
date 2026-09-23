@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenTelemetry.Trace;
 
@@ -6,25 +7,22 @@ namespace Braintrust.Sdk.AgentFramework;
 
 /// <summary>
 /// Function calling middleware that wraps tool/function invocations with Braintrust tracing spans.
-/// Implemented as a configure action for FunctionInvokingChatClient.
+/// Uses the Agent Framework function invocation callback without adding a tool-call loop.
 /// </summary>
 internal static class BraintrustFunctionMiddleware
 {
     /// <summary>
-    /// Creates a FunctionInvoker delegate that wraps function calls with Braintrust tracing.
-    /// The returned delegate should be set as the FunctionInvoker on a FunctionInvokingChatClient.
+    /// Creates a callback that traces the framework's existing function invocation continuation.
     /// </summary>
-    internal static Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>
-        CreateInvoker(ActivitySource activitySource, bool captureToolArguments, Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>? defaultInvoker)
+    internal static Func<AIAgent, FunctionInvocationContext, Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>, CancellationToken, ValueTask<object?>>
+        CreateCallback(ActivitySource activitySource, bool captureToolArguments)
     {
-        return async (context, cancellationToken) =>
+        return async (agent, context, next, cancellationToken) =>
         {
             var functionName = context.Function?.Name ?? "unknown";
 
-            // With LLM tracing sitting inside the function invocation middleware, the first LLM span
-            // has already closed by the time the function invoker runs. Activity.Current is therefore
-            // the agent span (or whatever the ambient parent is), which is exactly where we want the
-            // function span to hang — as a sibling of the LLM spans, not a child.
+            // The per-call LLM span has closed before the framework invokes tools,
+            // so function spans are siblings of LLM spans under the ambient agent span.
             using var activity = activitySource.StartActivity(
                 $"function:{functionName}",
                 ActivityKind.Internal);
@@ -54,17 +52,7 @@ internal static class BraintrustFunctionMiddleware
                     }
                 }
 
-                object? result;
-                if (defaultInvoker != null)
-                {
-                    result = await defaultInvoker(context, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    result = context.Function != null
-                        ? await context.Function.InvokeAsync(context.Arguments, cancellationToken).ConfigureAwait(false)
-                        : null;
-                }
+                var result = await next(context, cancellationToken).ConfigureAwait(false);
 
                 if (activity != null)
                 {
