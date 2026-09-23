@@ -11,6 +11,47 @@ public class FunctionMiddlewareTests
     private static readonly ActivitySource TestSource = new("Braintrust.Tests.Function");
 
     [Fact]
+    public async Task FunctionTracing_PreservesMiddlewareContinuationAndPrivacy()
+    {
+        using var source = new ActivitySource($"FunctionContinuation.{Guid.NewGuid()}");
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = candidate => candidate == source,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        var cities = new List<string>();
+        var tool = AIFunctionFactory.Create((string city) =>
+        {
+            cities.Add(city);
+            return $"Sunny in {city}";
+        }, "GetWeather");
+        var agent = new ChatClientAgent(new ToolCallingChatClient(tool), tools: [tool]).AsBuilder()
+            .Use(async (agent, context, next, cancellationToken) =>
+            {
+                context.Arguments["city"] = "Portland";
+                var result = await next(context, cancellationToken);
+                context.Terminate = true;
+                return $"Adjusted: {result}";
+            })
+            .UseBraintrustFunctionTracing(source, captureToolArguments: false)
+            .Build();
+
+        var response = await agent.RunAsync("Weather?");
+
+        Assert.Equal(["Portland"], cities);
+        var result = Assert.Single(response.Messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>());
+        Assert.Equal("Adjusted: Sunny in Portland", result.Result?.ToString());
+        var span = Assert.Single(activities);
+        Assert.Null(span.GetTagItem("braintrust.input_json"));
+        Assert.Null(span.GetTagItem("braintrust.output_json"));
+        Assert.Equal(true, span.GetTagItem("function.terminated"));
+    }
+
+    [Fact]
     public async Task UseBraintrustFunctionTracing_CreatesSpanForFunctionCall()
     {
         // Arrange
@@ -27,17 +68,12 @@ public class FunctionMiddlewareTests
 
         // Create a chat client that simulates a tool call
         var mockClient = new ToolCallingChatClient(getWeather);
-        var tracedClient = new ChatClientBuilder(mockClient)
+        var agent = new ChatClientAgent(mockClient, tools: [getWeather]).AsBuilder()
             .UseBraintrustFunctionTracing(TestSource)
             .Build();
 
         // Act
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.User, "What's the weather in Seattle?")
-        };
-        var options = new ChatOptions { Tools = [getWeather] };
-        await tracedClient.GetResponseAsync(messages, options);
+        await agent.RunAsync("What's the weather in Seattle?");
 
         // Assert
         var funcActivity = activities.FirstOrDefault(a => a.OperationName.StartsWith("function:"));
@@ -72,9 +108,12 @@ public class FunctionMiddlewareTests
         var getWeather = AIFunctionFactory.Create((string city) => $"Sunny in {city}", "GetWeather");
         var mockClient = new ToolCallingChatClient(getWeather);
         var chatClient = new ChatClientBuilder(mockClient)
-            .UseBraintrustTracing(TestSource)
+            .UseBraintrustLLMTracing(TestSource)
             .Build();
         var agent = new ChatClientAgent(chatClient, instructions: "You are a helpful assistant", name: "WeatherAgent", tools: [getWeather])
+            .AsBuilder()
+            .UseBraintrustFunctionTracing(TestSource)
+            .Build()
             .WithBraintrustAgentTracing(TestSource);
 
         // Act — wrap in a root span to give the agent span a known parent
@@ -127,17 +166,12 @@ public class FunctionMiddlewareTests
 
         var getWeather = AIFunctionFactory.Create((string city) => $"Sunny in {city}", "GetWeather");
         var mockClient = new ToolCallingChatClient(getWeather);
-        var tracedClient = new ChatClientBuilder(mockClient)
+        var agent = new ChatClientAgent(mockClient, tools: [getWeather]).AsBuilder()
             .UseBraintrustFunctionTracing(TestSource, captureToolArguments: true)
             .Build();
 
         // Act
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.User, "Weather in Seattle?")
-        };
-        var options = new ChatOptions { Tools = [getWeather] };
-        await tracedClient.GetResponseAsync(messages, options);
+        await agent.RunAsync("Weather in Seattle?");
 
         // Assert
         var funcActivity = activities.FirstOrDefault(a => a.OperationName.StartsWith("function:"));
