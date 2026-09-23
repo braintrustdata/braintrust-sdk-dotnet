@@ -126,6 +126,11 @@ internal sealed class BraintrustAgentMiddleware : DelegatingAIAgent
             }
 
             yield return update;
+
+            // Resuming an async iterator restores the consumer's execution context.
+            // Keep subsequent model calls and tool invocations under this agent span.
+            if (activity != null)
+                Activity.Current = activity;
         }
     }
 }
