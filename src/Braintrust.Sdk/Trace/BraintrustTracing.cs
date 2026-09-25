@@ -83,15 +83,25 @@ public static class BraintrustTracing
                 otlpOptions.Protocol = OtlpExportProtocol.HttpProtobuf;
                 otlpOptions.Endpoint = new Uri($"{config.ApiUrl}{config.TracesPath}");
                 otlpOptions.TimeoutMilliseconds = (int)config.RequestTimeout.TotalMilliseconds;
-                otlpOptions.HttpClientFactory = () => new HttpClient(new BraintrustOtlpAuthHandler(config)
-                {
-                    InnerHandler = new HttpClientHandler()
-                })
-                {
-                    Timeout = config.RequestTimeout
-                };
+                otlpOptions.HttpClientFactory = () => CreateHttpClient(config);
             })
             .SetSampler(new AlwaysOnSampler());
+    }
+
+    internal static HttpClient CreateHttpClient(BraintrustConfig config, HttpMessageHandler? transport = null)
+    {
+        HttpMessageHandler handler = new BraintrustOtlpAuthHandler(config)
+        {
+            InnerHandler = transport ?? new HttpClientHandler()
+        };
+        if (config.SpanCustomizers.Count != 0)
+        {
+            handler = new BraintrustSpanCustomizerHandler(config.SpanCustomizers)
+            {
+                InnerHandler = handler
+            };
+        }
+        return new HttpClient(handler) { Timeout = config.RequestTimeout };
     }
 
     /// <summary>
