@@ -289,7 +289,7 @@ public class BraintrustTest : IDisposable
 
         using var handler = new QueuedHttpHandler();
         handler.Enqueue($$"""{"objects":[{"id":"{{projectId}}","org_id":"{{orgId}}","name":"my project"}]}""");
-        handler.Enqueue($$"""{"id":"{{orgId}}","name":"my org"}""");
+        handler.Enqueue($$"""{"org_info":[{"id":"{{orgId}}","name":"my org"}]}""");
 
         using var apiClient = new BraintrustOpenApiClient(config, handler);
         var braintrust = Braintrust.Of(config, apiClient);
@@ -299,5 +299,9 @@ public class BraintrustTest : IDisposable
         Assert.Equal(
             "https://proxy.example.com/braintrust/app/my%20org/p/my%20project",
             uri.AbsoluteUri);
+
+        // Service accounts scoped to projects lack organization read, so the org comes from login.
+        Assert.Equal("/api/apikey/login", handler.Requests[^1].Path);
+        Assert.DoesNotContain(handler.Requests, r => r.Path.StartsWith("/v1/organization"));
     }
 }

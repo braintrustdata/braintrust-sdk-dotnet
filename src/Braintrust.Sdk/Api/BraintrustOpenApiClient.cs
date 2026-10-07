@@ -1,5 +1,7 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Braintrust.Sdk.Api.Internal;
 using Braintrust.Sdk.Config;
 using Generated = Braintrust.Sdk.Api.Generated;
@@ -160,10 +162,48 @@ public sealed class BraintrustOpenApiClient : IDisposable
     {
         var project = await FetchProjectAsync(projectId, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-        var organization = await _api.GetOrganizationIdAsync(project.Org_id, cancellationToken)
+        var organization = await FetchOrganizationAsync(project.Org_id, cancellationToken)
             .ConfigureAwait(false);
         return (project, organization);
     }
+
+    /// <summary>
+    /// Resolve the org through /api/apikey/login rather than GET /v1/organization/{id}, which
+    /// needs organization read and so fails for service accounts scoped to projects. Login is not
+    /// part of the OpenAPI spec, so it is issued directly - the same as sdk-java.
+    /// </summary>
+    internal async Task<Generated.Organization> FetchOrganizationAsync(
+        Guid orgId,
+        CancellationToken cancellationToken = default)
+    {
+        var apiKey = await _config.GetRequiredApiKeyAsync(cancellationToken).ConfigureAwait(false);
+
+        using var response = await _httpClient
+            .PostAsJsonAsync("/api/apikey/login", new LoginRequest(apiKey), cancellationToken)
+            .ConfigureAwait(false);
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ApiException(
+                (int)response.StatusCode,
+                $"API request failed with status {(int)response.StatusCode}: {content}");
+        }
+
+        var org = JsonSerializer.Deserialize<LoginResponse>(content)?.OrgInfo
+            .FirstOrDefault(o => o.Id == orgId)
+            ?? throw new ApiException($"Organization {orgId} not found for this API key");
+        return new Generated.Organization { Id = org.Id, Name = org.Name };
+    }
+
+    private sealed record LoginRequest([property: JsonPropertyName("token")] string Token);
+
+    private sealed record LoginResponse(
+        [property: JsonPropertyName("org_info")] List<LoginOrgInfo> OrgInfo);
+
+    private sealed record LoginOrgInfo(
+        [property: JsonPropertyName("id")] Guid Id,
+        [property: JsonPropertyName("name")] string Name);
 
     internal async Task<Uri> FetchProjectUriAsync(CancellationToken cancellationToken = default)
     {
