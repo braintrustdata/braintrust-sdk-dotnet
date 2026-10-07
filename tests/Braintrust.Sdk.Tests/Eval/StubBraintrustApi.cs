@@ -141,9 +141,10 @@ internal sealed class StubBraintrustApi : IDisposable
                     $$"""{"id":"{{ProjectId}}","org_id":"{{OrgId}}","name":"{{name}}"}""");
             }
 
-            if (path.StartsWith("/v1/organization/"))
+            if (path == "/api/apikey/login" && method == HttpMethod.Post)
             {
-                return (HttpStatusCode.OK, $$"""{"id":"{{OrgId}}","name":"{{_orgName}}"}""");
+                return (HttpStatusCode.OK,
+                    $$"""{"org_info":[{"id":"{{OrgId}}","name":"{{_orgName}}"}]}""");
             }
 
             if (path == "/v1/experiment" && method == HttpMethod.Post)

@@ -132,7 +132,7 @@ public sealed class DefaultBraintrustApiClient : IBraintrustApiClient, IDisposab
 
     private async Task<OrganizationInfo> ResolveOrg(Project project)
     {
-        var organization = await Api.GetOrganizationIdAsync(Guid.Parse(project.OrgId))
+        var organization = await _client.FetchOrganizationAsync(Guid.Parse(project.OrgId))
             .ConfigureAwait(false);
         return new OrganizationInfo(organization.Id.ToString(), organization.Name);
     }
