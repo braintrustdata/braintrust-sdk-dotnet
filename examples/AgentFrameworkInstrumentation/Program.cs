@@ -23,11 +23,11 @@ class Program
         var braintrust = Braintrust.Get();
         var activitySource = braintrust.GetActivitySource();
 
-        // Build an IChatClient with Braintrust tracing at the LLM and function levels
+        // Trace each model call without adding a function-invocation loop.
         var openAIClient = new OpenAI.OpenAIClient(openAIApiKey);
         var chatClient = openAIClient.GetChatClient("gpt-4o-mini").AsIChatClient()
             .AsBuilder()
-            .UseBraintrustTracing(activitySource)          // LLM + function-level tracing
+            .UseBraintrustLLMTracing(activitySource)
             .Build();
 
         // Define a tool
@@ -46,6 +46,9 @@ class Program
                 instructions: "You are a helpful assistant. Use tools when appropriate.",
                 name: "WeatherAgent",
                 tools: [getWeather])
+            .AsBuilder()
+            .UseBraintrustFunctionTracing(activitySource)
+            .Build()
             .WithBraintrustAgentTracing(activitySource); // Agent-level tracing
 
         using (var rootActivity = activitySource.StartActivity("agent-framework-instrumentation-example"))

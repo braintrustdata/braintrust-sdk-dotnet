@@ -1,30 +1,104 @@
 using System.Diagnostics;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenTelemetry.Trace;
 
 namespace Braintrust.Sdk.AgentFramework;
 
 /// <summary>
-/// Function calling middleware that wraps tool/function invocations with Braintrust tracing spans.
-/// Implemented as a configure action for FunctionInvokingChatClient.
+/// Agent middleware that wraps tool/function invocations with Braintrust tracing spans.
+/// Decorates the agent's existing function invocation pipeline without adding a tool-call loop.
+///
+/// Mirrors the Agent Framework's function invocation middleware, but never mutates
+/// caller-owned run options, and passes runs through untraced instead of throwing when
+/// the run options don't support a chat client factory.
 /// </summary>
-internal static class BraintrustFunctionMiddleware
+internal sealed class BraintrustFunctionMiddleware : DelegatingAIAgent
 {
-    /// <summary>
-    /// Creates a FunctionInvoker delegate that wraps function calls with Braintrust tracing.
-    /// The returned delegate should be set as the FunctionInvoker on a FunctionInvokingChatClient.
-    /// </summary>
-    internal static Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>
-        CreateInvoker(ActivitySource activitySource, bool captureToolArguments, Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>? defaultInvoker)
-    {
-        return async (context, cancellationToken) =>
-        {
-            var functionName = context.Function?.Name ?? "unknown";
+    private readonly ActivitySource _activitySource;
+    private readonly bool _captureToolArguments;
 
-            // With LLM tracing sitting inside the function invocation middleware, the first LLM span
-            // has already closed by the time the function invoker runs. Activity.Current is therefore
-            // the agent span (or whatever the ambient parent is), which is exactly where we want the
-            // function span to hang — as a sibling of the LLM spans, not a child.
+    internal BraintrustFunctionMiddleware(AIAgent innerAgent, ActivitySource activitySource, bool captureToolArguments)
+        : base(innerAgent)
+    {
+        _activitySource = activitySource;
+        _captureToolArguments = captureToolArguments;
+    }
+
+    protected override Task<AgentResponse> RunCoreAsync(
+        IEnumerable<ChatMessage> messages,
+        AgentSession? session = null,
+        AgentRunOptions? options = null,
+        CancellationToken cancellationToken = default)
+        => InnerAgent.RunAsync(messages, session, WithFunctionTracing(options), cancellationToken);
+
+    protected override IAsyncEnumerable<AgentResponseUpdate> RunCoreStreamingAsync(
+        IEnumerable<ChatMessage> messages,
+        AgentSession? session = null,
+        AgentRunOptions? options = null,
+        CancellationToken cancellationToken = default)
+        => InnerAgent.RunStreamingAsync(messages, session, WithFunctionTracing(options), cancellationToken);
+
+    /// <summary>
+    /// Returns a copy of the run options whose chat client factory wraps tools with tracing.
+    /// Options that can't carry a chat client factory are returned unchanged.
+    /// </summary>
+    private AgentRunOptions? WithFunctionTracing(AgentRunOptions? options)
+    {
+        ChatClientAgentRunOptions traced;
+        if (options is null || options.GetType() == typeof(AgentRunOptions))
+        {
+            traced = new ChatClientAgentRunOptions
+            {
+                ResponseFormat = options?.ResponseFormat,
+                AllowBackgroundResponses = options?.AllowBackgroundResponses,
+#pragma warning disable MEAI001 // Continuation tokens are experimental, but must be preserved for background responses.
+                ContinuationToken = options?.ContinuationToken,
+#pragma warning restore MEAI001
+                AdditionalProperties = options?.AdditionalProperties,
+            };
+        }
+        else if (options is ChatClientAgentRunOptions chatClientOptions)
+        {
+            // Clone so reused options don't accumulate a tracing wrapper per run.
+            traced = (ChatClientAgentRunOptions)chatClientOptions.Clone();
+        }
+        else
+        {
+            return options;
+        }
+
+        var originalFactory = traced.ChatClientFactory;
+        traced.ChatClientFactory = chatClient =>
+        {
+            var builder = chatClient.AsBuilder();
+
+            if (originalFactory is not null)
+            {
+                builder.Use(originalFactory);
+            }
+
+            return builder.ConfigureOptions(co
+                    => co.Tools = co.Tools?.Select(tool => tool is AIFunction aiFunction
+                            ? new TracedFunction(aiFunction, _activitySource, _captureToolArguments)
+                            : tool)
+                        .ToList())
+                .Build();
+        };
+
+        return traced;
+    }
+
+    private sealed class TracedFunction(AIFunction innerFunction, ActivitySource activitySource, bool captureToolArguments)
+        : DelegatingAIFunction(innerFunction)
+    {
+        protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+        {
+            var context = FunctionInvokingChatClient.CurrentContext;
+            var functionName = InnerFunction.Name;
+
+            // The per-call LLM span has closed before the framework invokes tools,
+            // so function spans are siblings of LLM spans under the ambient agent span.
             using var activity = activitySource.StartActivity(
                 $"function:{functionName}",
                 ActivityKind.Internal);
@@ -36,16 +110,19 @@ internal static class BraintrustFunctionMiddleware
                 {
                     SpanTagHelper.SetSpanType(activity, "function_call");
                     activity.SetTag("function.name", functionName);
-                    activity.SetTag("function.iteration", context.Iteration);
-                    activity.SetTag("function.call_index", context.FunctionCallIndex);
-                    activity.SetTag("function.total_count", context.FunctionCount);
+                    if (context != null)
+                    {
+                        activity.SetTag("function.iteration", context.Iteration);
+                        activity.SetTag("function.call_index", context.FunctionCallIndex);
+                        activity.SetTag("function.total_count", context.FunctionCount);
+                    }
 
-                    if (captureToolArguments && context.Arguments != null)
+                    if (captureToolArguments)
                     {
                         try
                         {
                             activity.SetTag("braintrust.input_json",
-                                SpanTagHelper.ToJson(context.Arguments));
+                                SpanTagHelper.ToJson(arguments));
                         }
                         catch
                         {
@@ -54,17 +131,7 @@ internal static class BraintrustFunctionMiddleware
                     }
                 }
 
-                object? result;
-                if (defaultInvoker != null)
-                {
-                    result = await defaultInvoker(context, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    result = context.Function != null
-                        ? await context.Function.InvokeAsync(context.Arguments, cancellationToken).ConfigureAwait(false)
-                        : null;
-                }
+                var result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
 
                 if (activity != null)
                 {
@@ -84,7 +151,7 @@ internal static class BraintrustFunctionMiddleware
                         }
                     }
 
-                    if (context.Terminate)
+                    if (context?.Terminate == true)
                     {
                         activity.SetTag("function.terminated", true);
                     }
@@ -101,6 +168,6 @@ internal static class BraintrustFunctionMiddleware
                 }
                 throw;
             }
-        };
+        }
     }
 }
