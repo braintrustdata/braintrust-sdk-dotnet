@@ -7,14 +7,13 @@ using Xunit;
 namespace Braintrust.Sdk.Api.Generated.Tests;
 
 /// <summary>
-/// Guards how the generated client writes request bodies. Both assertions here cover a
-/// failure the API rejected outright, so a regression is a broken write path rather than
-/// a cosmetic diff:
+/// Guards how the generated client writes request bodies:
 ///
 /// - string enums must go out with their spec values, which needs the
 ///   [JsonStringEnumMemberName] annotations that /jsonLibraryVersion:9.0 emits;
 /// - unset optional members must be omitted, which is what
-///   SerializerSettings.cs configures.
+///   SerializerSettings.cs configures;
+/// - nullable booleans must distinguish unknown from explicit false and true.
 /// </summary>
 public class RequestSerializationTests
 {
@@ -54,6 +53,30 @@ public class RequestSerializationTests
         Assert.False(body.TryGetProperty("description", out _));
         Assert.False(body.GetProperty("config").GetProperty("action")
             .TryGetProperty("formatting_prompt", out _));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Nullable_repo_dirty_preserves_unknown_false_and_true(bool? dirty)
+    {
+        var handler = new CapturingHandler("{}");
+        using var http = new HttpClient(handler);
+        var client = new BraintrustGeneratedApiClient(http);
+        await client.PostExperimentAsync(new CreateExperiment
+        {
+            Project_id = Guid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
+            Name = "nullable-repo-info",
+            Repo_info = new RepoInfo { Dirty = dirty },
+        });
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody!);
+        var repo = body.RootElement.GetProperty("repo_info");
+        if (dirty.HasValue)
+            Assert.Equal(dirty.Value, repo.GetProperty("dirty").GetBoolean());
+        else
+            Assert.False(repo.TryGetProperty("dirty", out _));
     }
 
     static CreateProjectAutomation Automation(ProjectAutomationConfig config) => new()

@@ -5,6 +5,7 @@
 // so a new union in the spec is handled without touching this file.
 //
 // The rules, in order:
+//  13. translate OpenAPI 3.1 nullable type arrays to generator-compatible nullable schemas
 //   1. collapse allOf:[$ref, anyOf] back to the plain $ref
 //   2. drop inline titles that would clobber a component POJO
 //   3. drop nullish union arms; a union of one real arm becomes that arm
@@ -235,6 +236,7 @@ namespace Braintrust.Build
             var rootMap = Map(root);
             _schemas = Map(Get(Get(rootMap, "components"), "schemas"));
 
+            report.Add(NormalizeNullableTypes(root));
             report.Add(CollapseAllOfOverRef(root));
             report.Add(StripAmbiguousTitles(root));
             report.AddRange(ApplyUnionRules(rootMap));
@@ -252,6 +254,34 @@ namespace Braintrust.Build
                 report.Add(WriteUnionShellCompanion(unionShellsPath, nameSpace));
 
             return report;
+        }
+
+        // NSwag's OpenAPI reader expects the 3.0 nullable representation. Normalize
+        // before shape matching too, so nullable objects/arrays keep their structure.
+        static string NormalizeNullableTypes(object root)
+        {
+            var count = 0;
+            void Visit(object node)
+            {
+                var m = Map(node);
+                if (m == null)
+                {
+                    var list = Lst(node);
+                    if (list != null) foreach (var value in list) Visit(value);
+                    return;
+                }
+
+                var types = Lst(Get(m, "type"));
+                if (types != null && types.Count == 2 && types.Contains("null"))
+                {
+                    m["type"] = types.First(t => !Equals(t, "null"));
+                    m["nullable"] = true;
+                    count++;
+                }
+                foreach (var value in m.Values) Visit(value);
+            }
+            Visit(root);
+            return $"normalized {count} nullable type array(s)";
         }
 
         // ── Rule 1: collapse allOf:[$ref, anyOf/oneOf] -> $ref ───────────────
@@ -542,6 +572,9 @@ namespace Braintrust.Build
             var groups = sites.GroupBy(s => s.ShapeKey).ToList();
             var taken = new HashSet<string>(_schemas.Keys.Select(Str));
             int hierarchies = 0, shared = 0;
+            var hierarchyNameCounts = sites
+                .GroupBy(s => s.DesiredName)
+                .ToDictionary(g => g.Key, g => g.Select(s => s.ShapeKey).Distinct().Count());
 
             foreach (var group in groups)
             {
@@ -556,6 +589,17 @@ namespace Braintrust.Build
                 var desired = holder?.DesiredName ?? members
                     .OrderBy(m => m.DesiredName.Length).ThenBy(m => m.DesiredName, StringComparer.Ordinal)
                     .First().DesiredName;
+
+                // Different unions beneath sibling composition arms can have the same
+                // property path. Qualify by their discriminator values, not a numeric
+                // suffix whose meaning depends on traversal order.
+                if (holder == null && hierarchyNameCounts[desired] > 1)
+                {
+                    var discriminator = members[0].Discriminator;
+                    desired = string.Concat(members[0].Arms
+                        .Select(a => Str(Lst(Get(Effective(Get(Get(Effective(a), "properties"), discriminator)), "enum"))[0]))
+                        .OrderBy(v => v, StringComparer.Ordinal).Select(Pascal)) + desired;
+                }
 
                 var baseName = holder != null ? desired : Allocate(desired, taken);
                 var representative = holder ?? members[0];

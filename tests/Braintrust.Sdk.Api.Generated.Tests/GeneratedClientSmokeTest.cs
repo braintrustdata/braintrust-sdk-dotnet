@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Braintrust.Sdk.Api.Generated;
 using Xunit;
 
@@ -12,13 +13,15 @@ namespace Braintrust.Sdk.Api.Generated.Tests;
 /// </summary>
 public class GeneratedClientSmokeTest
 {
-    [Fact]
-    public async Task GetProject_deserializes_typed_response()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("2026-01-01T12:00:00Z")]
+    public async Task GetProject_deserializes_typed_response(string? created)
     {
         var id = Guid.NewGuid();
         var orgId = Guid.NewGuid();
         var json = $$"""
-            {"id":"{{id}}","org_id":"{{orgId}}","name":"my-project"}
+            {"id":"{{id}}","org_id":"{{orgId}}","name":"my-project","created":{{JsonSerializer.Serialize(created)}}}
             """;
 
         var handler = new StubHandler(HttpStatusCode.OK, json);
@@ -29,6 +32,7 @@ public class GeneratedClientSmokeTest
         Assert.Equal(id, project.Id);
         Assert.Equal(orgId, project.Org_id);
         Assert.Equal("my-project", project.Name);
+        Assert.Equal(created is null ? (DateTimeOffset?)null : DateTimeOffset.Parse(created), project.Created);
         Assert.Contains($"v1/project/{id}", handler.LastRequestUri!.ToString());
     }
 
